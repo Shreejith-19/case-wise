@@ -1,7 +1,7 @@
 # Project Plan: Structure-Aware, LLM-Assisted RAG for Indian Statutory Law (IndiaStatRAG)
 
-> Status: **Phase 0 complete (2026-11-16)** — environment, pinned kit, eval wrapper, baselines reproduced
-> exactly (see README.md). Next: Phase 1. This document is the single source of truth for
+> Status: **Phase 0 + Phase 1 complete (2026-11-16)** — environment, pinned kit, eval wrapper, baselines
+> reproduced exactly (README.md); unit store built (§6 Phase 1 results). Next: Phase 2. This document is the single source of truth for
 > what we build, in what order, and how we evaluate it. Update the "Decision log" when anything changes.
 
 ---
@@ -239,6 +239,14 @@ Each phase ends with a **complete, scorable system** on dev, so stopping early s
 9. Unit tests: offsets round-trip (`text[s:e]` sha256 equals `text_sha256` where `text_matches_span`), no negative/backwards spans, dedup members share normalised text.
 
 **Done when:** `units.parquet` built, stats logged (#units, #classes, #windows, length distribution), alignment ≥ 95% on dev.
+
+**Phase 1 results (2026-11-16)** — `python -m isr.corpus.build` (~1 min, 6 workers) → `data/units/` (254 MB), `data/docs.parquet`, `data/units_stats.json`:
+- Structure facts: provisions are flat, non-overlapping, only `section` (354,451) / `article` (9,088); they cover ~65% of text on average; 1,740 docs have no provisions, 4,305 are < 50% covered.
+- 884,128 units: 363,539 provisions · 262,658 sub-units (≤ 2,000 chars, median 1,261) · 257,931 gap windows. 783,706 class representatives (dedup −11%) ≈ 964M chars to index.
+- Rules/regulations → parent Act resolved for 5,159 / 5,689.
+- Dev alignment (`scripts/check_units.py`): **205/205 gold locations are exactly one provision unit; 156/156 groups contain an indexed representative** (dedup never hides gold).
+- At B=2,000, unit-aligned sub-unit runs reach τ=0.5 on 23/30 long dev gold provisions vs 26/30 for the oracle's truncation → **Phase 2 packer requirement:** spans need not follow unit boundaries; for a long provision, emit the best ≤ B-char window inside it (never worse than oracle truncation once the provision is found).
+- Gap windows are kept in the index (realistic). Report a "provisions-only" ablation separately and label it as exploiting benchmark construction.
 
 ### Phase 2 — Plan A: structure-aware hybrid retrieval (Day 2–3)
 1. **Sparse:** BM25 over unit text with stemming; legal-aware tokenisation (keep `2(1)(a)`, years, numbers, "Rs."); separate title/heading field fused or boosted. Also re-run as `A0 = BM25-provision-units` to isolate RQ1.
