@@ -1,0 +1,33 @@
+{
+  "question_id": "IN-STAT-0362",
+  "category": "unanswerable",
+  "answer_type": "abstractive",
+  "jurisdiction_hint": null,
+  "gold_evidence": [],
+  "proposed_alternatives": [],
+  "must_cite": [],
+  "unanswerable": true,
+  "difficulty": {},
+  "provenance": {
+    "status": "verified",
+    "sample": null,
+    "sample_index": null,
+    "tags": [],
+    "verified_by": "language-model",
+    "verified_at": "2026-09-22",
+    "verification_method": "text_review",
+    "verification": {
+      "span_matches_source": true,
+      "text_undamaged": true,
+      "answer_follows": true,
+      "facts_present": true,
+      "question_fair": true,
+      "alternatives_checked": true
+    },
+    "ref": "unanswerable#missing-24",
+    "drafting_method": "language_model"
+  },
+  "question": "Under section 90 of the Arbitration and Conciliation Act, 1996, what fee cap applies to online dispute resolution platforms?",
+  "gold_answer": "The corpus does not answer this. Arbitration and Conciliation Act, 1996 has no section 90, so the provision asked about does not exist.",
+  "required_facts": []
+}

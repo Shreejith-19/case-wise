@@ -1,0 +1,28 @@
+# Large / derived data — never committed
+# (anchored with a leading slash: benchmark_kit/benchmark/data/ must stay tracked)
+/corpus/
+/data/
+/indexes/
+/external/
+/runs/*
+!/runs/final/
+*.npy
+*.npz
+*.faiss
+*.sqlite
+*.parquet
+*.gguf
+*.safetensors
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,78 @@
+{
+  "question_id": "IN-STAT-0494",
+  "question": "Under the 1976 law on equal pay for men and women, who checks that employers comply, and what is their legal status?",
+  "category": "situational",
+  "answer_type": "abstractive",
+  "jurisdiction_hint": null,
+  "gold_evidence": [
+    {
+      "group_id": "g1",
+      "requirement": "sufficient",
+      "locations": [
+        {
+          "document_id": "equal-remuneration-act-1976__handle-9146",
+          "key": "section:9",
+          "citation": "EQUAL REMUNERATION ACT, 1976, s. 9",
+          "unit_path": [
+            {
+              "unit_type": "section",
+              "number": "9"
+            }
+          ],
+          "char_start": 12112,
+          "char_end": 13681,
+          "page_start": 6,
+          "page_end": 6,
+          "text_sha256": "90855a58886e9cc82af00608c42b420eea4c1fed14652e09333cf3220423ead2",
+          "evidence_confidence": "high",
+          "source": "sampled"
+        }
+      ]
+    }
+  ],
+  "proposed_alternatives": [],
+  "gold_answer": "Inspectors appointed by notification by the appropriate Government, who are deemed to be public servants.",
+  "required_facts": [
+    [
+      "Inspectors"
+    ],
+    [
+      "public servant"
+    ]
+  ],
+  "must_cite": [
+    {
+      "document_id": "equal-remuneration-act-1976__handle-9146",
+      "key": "section:9"
+    }
+  ],
+  "unanswerable": false,
+  "difficulty": {
+    "char_count": 1569,
+    "number_ambiguity": 6389,
+    "title_collisions": 7,
+    "cluster_size": 1,
+    "equivalents": 0,
+    "cross_instrument_equivalents": false
+  },
+  "provenance": {
+    "status": "verified",
+    "sample": "sample-s20260922-n1000.json",
+    "sample_index": 836,
+    "tags": [],
+    "drafting_method": "language_model",
+    "verified_by": "language-model",
+    "verified_at": "2026-09-22",
+    "verification_method": "text_review",
+    "verification": {
+      "span_matches_source": true,
+      "text_undamaged": true,
+      "answer_follows": true,
+      "facts_present": true,
+      "question_fair": true,
+      "alternatives_checked": true
+    },
+    "ref": "sample-s20260922-n1000.json#836",
+    "verification_note": "Question tied to the 1976 equal pay law: the Code on Wages, 2019 assigns the same checks to differently named officers."
+  }
+}

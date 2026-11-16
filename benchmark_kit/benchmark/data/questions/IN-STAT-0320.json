@@ -1,0 +1,74 @@
+{
+  "question_id": "IN-STAT-0320",
+  "question": "In Maharashtra, which ledger records securities handed back from trust funds for public welfare?",
+  "category": "jurisdictional",
+  "answer_type": "extractive",
+  "jurisdiction_hint": "Maharashtra",
+  "gold_evidence": [
+    {
+      "group_id": "g1",
+      "requirement": "sufficient",
+      "locations": [
+        {
+          "document_id": "the-maharashtra-charitable-endowments-rules-1966__rule-bf62bf14aa",
+          "key": "section:12",
+          "citation": "The Maharashtra Charitable Endowments Rules, 1966., r. 12",
+          "unit_path": [
+            {
+              "unit_type": "section",
+              "number": "12"
+            }
+          ],
+          "char_start": 7533,
+          "char_end": 7949,
+          "page_start": 4,
+          "page_end": 4,
+          "text_sha256": "342a7c9ce98f27cdc731d6db5816c0dc8c545335e6668a543e0fe86bd689c896",
+          "evidence_confidence": "high",
+          "source": "sampled"
+        }
+      ]
+    }
+  ],
+  "proposed_alternatives": [],
+  "gold_answer": "A Stock Disposal Register in Form 5.",
+  "required_facts": [
+    [
+      "Stock Disposal Register"
+    ]
+  ],
+  "must_cite": [
+    {
+      "document_id": "the-maharashtra-charitable-endowments-rules-1966__rule-bf62bf14aa",
+      "key": "section:12"
+    }
+  ],
+  "unanswerable": false,
+  "difficulty": {
+    "char_count": 416,
+    "number_ambiguity": 5903,
+    "title_collisions": 1,
+    "cluster_size": 1,
+    "equivalents": 0,
+    "cross_instrument_equivalents": false
+  },
+  "provenance": {
+    "status": "verified",
+    "sample": "sample-s20260922-n1000.json",
+    "sample_index": 402,
+    "tags": [],
+    "drafting_method": "language_model",
+    "verified_by": "language-model",
+    "verified_at": "2026-09-22",
+    "verification_method": "text_review",
+    "verification": {
+      "span_matches_source": true,
+      "text_undamaged": true,
+      "answer_follows": true,
+      "facts_present": true,
+      "question_fair": true,
+      "alternatives_checked": true
+    },
+    "ref": "sample-s20260922-n1000.json#402"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "question_id": "IN-STAT-0356",
+  "category": "unanswerable",
+  "answer_type": "abstractive",
+  "jurisdiction_hint": null,
+  "gold_evidence": [],
+  "proposed_alternatives": [],
+  "must_cite": [],
+  "unanswerable": true,
+  "difficulty": {},
+  "provenance": {
+    "status": "verified",
+    "sample": null,
+    "sample_index": null,
+    "tags": [],
+    "verified_by": "language-model",
+    "verified_at": "2026-09-22",
+    "verification_method": "text_review",
+    "verification": {
+      "span_matches_source": true,
+      "text_undamaged": true,
+      "answer_follows": true,
+      "facts_present": true,
+      "question_fair": true,
+      "alternatives_checked": true
+    },
+    "ref": "unanswerable#missing-18",
+    "drafting_method": "language_model"
+  },
+  "question": "Under section 42 of the National Highways Authority of India Act, 1988, which vehicles are exempt from toll?",
+  "gold_answer": "The corpus does not answer this. National Highways Authority of India Act, 1988 has no section 42, so the provision asked about does not exist.",
+  "required_facts": []
+}
