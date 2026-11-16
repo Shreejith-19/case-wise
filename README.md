@@ -15,6 +15,32 @@ Design, decisions and phases: [plan.md](plan.md). Test-split evaluation log: [TE
 | Budgets / τ | 2,000 / **8,000** (headline) / 32,000 chars; τ = 0.5 (0.8, 1.0 reported) |
 | Tuned on test | no (all tuning on dev; see plan.md D6) |
 
+## Environment (verified 2026-11-16)
+
+| item | value |
+|---|---|
+| GPU / CPU / RAM | RTX 4060 Laptop 8 GB · Ryzen 7 7840HS · 15 GB |
+| Python / torch | 3.12.4 · torch 2.13.0+cu130 (exact packages: `requirements.lock.txt`) |
+| Ollama | 0.17.7 |
+| `qwen3:8b` | Q4_K_M, digest `500a1f067a9f…`, 100% VRAM, ~1.7k prompt tok/s, ~43 gen tok/s @ num_ctx 8192 |
+| `llama3.1:8b` | Q4_K_M, digest `46e0c10c039e…`, 100% VRAM, ~1.7k prompt tok/s, ~47 gen tok/s @ num_ctx 8192 |
+
+## Phase 0 sanity results
+
+- `oracle`: recall 1.000 at B=8k/32k on dev and test (B=2k ceiling 0.81–1.00) — scorer and corpus consistent.
+- Shipped BM25 baselines on **test** reproduce the benchmark README table exactly (B=8k evidence recall):
+
+  | category | bm25-windows | bm25-two-stage |
+  |---|---:|---:|
+  | provision_lookup | 0.491 | 0.528 |
+  | definitional | 0.382 | 0.294 |
+  | numeric_threshold | 0.417 | 0.250 |
+  | cross_reference | 0.235 | 0.196 |
+  | jurisdictional | 0.100 | 0.120 |
+  | situational | 0.075 | 0.065 |
+
+  Both abstain 0.000 on unanswerable. BM25 index: 794,541 windows, 693 MB, built in ~6 min; querying ≈ 0.8–1.8 s/question.
+
 ## Setup (Windows, Python 3.12)
 
 ```bash

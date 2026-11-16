@@ -1,6 +1,7 @@
 # Project Plan: Structure-Aware, LLM-Assisted RAG for Indian Statutory Law (IndiaStatRAG)
 
-> Status: **PLANNING — nothing implemented yet.** This document is the single source of truth for
+> Status: **Phase 0 complete (2026-11-16)** — environment, pinned kit, eval wrapper, baselines reproduced
+> exactly (see README.md). Next: Phase 1. This document is the single source of truth for
 > what we build, in what order, and how we evaluate it. Update the "Decision log" when anything changes.
 
 ---
