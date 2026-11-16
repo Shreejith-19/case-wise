@@ -35,6 +35,8 @@ class Trace:
     parsed: ParsedQuery | None = None
     lists: dict[str, list[int]] = field(default_factory=dict)
     abstain_reason: str | None = None
+    rerank_top: float | None = None          # best cross-encoder score (for threshold abstention)
+    final: list[int] = field(default_factory=list)
 
 
 def rrf(lists: dict[str, list[int]], weights: dict[str, float], k: int = 60) -> list[int]:
@@ -55,6 +57,14 @@ class Pipeline:
         if "bm25" in config.get("retrieve", {}) or config.get("metadata"):
             from isr.index.bm25 import BM25
             self.bm25 = BM25()
+        self.dense = None
+        if "dense" in config.get("retrieve", {}):
+            from isr.index.dense import DenseIndex
+            self.dense = DenseIndex(config["retrieve"]["dense"]["model"])
+        self.reranker = None
+        if config.get("rerank"):
+            from isr.retrieve.rerank import Reranker
+            self.reranker = Reranker(config["rerank"]["model"], self.store)
         self.jur_docs: dict[str, list[str]] = {}
         if config.get("metadata", {}).get("jur_bm25"):
             docs = self.store.docs
@@ -91,6 +101,10 @@ class Pipeline:
         if "bm25" in r:
             lists["bm25"] = self._bm25(question, r["bm25"].get("k", 300))
             weights["bm25"] = r["bm25"].get("weight", 1.0)
+        if self.dense is not None:
+            ids, _ = self.dense.search([question], k=r["dense"].get("k", 300))[0]
+            lists["dense"] = [int(i) for i in ids]
+            weights["dense"] = r["dense"].get("weight", 1.0)
 
         md = cfg.get("metadata") or {}
         ab = cfg.get("abstain") or {}
@@ -122,6 +136,19 @@ class Pipeline:
         if not lists:
             raise ValueError("no retriever configured")
         fused = rrf(lists, weights, k=cfg.get("fusion", {}).get("k", 60)) if len(lists) > 1 else lists[next(iter(lists))]
+        if self.reranker is not None:
+            depth = cfg["rerank"].get("depth", 100)
+            # exact named-provision hits stay on top: the reranker only orders the rest
+            pinned = [u for u in lists.get("exact_ref", [])] if cfg["rerank"].get("pin_exact", True) else []
+            pinned_set = set(pinned)
+            rest = [u for u in fused if u not in pinned_set]
+            reranked, top = self.reranker.rerank(question, rest, depth)
+            tr.rerank_top = float(top[0]) if len(top) else None
+            fused = pinned + reranked
+            thr = ab.get("rerank_threshold")
+            if thr is not None and not tr.abstain_reason and not pinned and (tr.rerank_top is None or tr.rerank_top < thr):
+                tr.abstain_reason = "low_rerank_score"
+        tr.final = fused[:50]
         return fused, tr
 
     def run(self, question: str, budgets: Sequence[int] = BUDGETS) -> dict[int, list]:

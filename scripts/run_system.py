@@ -8,6 +8,7 @@ Test split: only with --test-note (forwarded to the evaluator, logged to TEST_RU
 from __future__ import annotations
 
 import argparse
+import json
 import time
 from pathlib import Path
 
@@ -34,12 +35,17 @@ def main() -> int:
     pipe = Pipeline(config)
     questions = questions_for(args.split)
     t0 = time.time()
-    run = {}
+    run, traces = {}, {}
     for n, q in enumerate(questions, 1):
-        run[q["question_id"]] = pipe.run(q["question"])
+        run[q["question_id"]], tr = pipe.run_traced(q["question"])
+        traces[q["question_id"]] = {"abstain_reason": tr.abstain_reason, "rerank_top": tr.rerank_top,
+                                    "lists": {k: v[:20] for k, v in tr.lists.items()}, "final": tr.final[:20]}
         if n % 50 == 0:
             print(f"  {n}/{len(questions)} ({time.time() - t0:.0f}s)", flush=True)
     secs = time.time() - t0
+    trace_path = RUNS_DIR / config["name"] / f"trace_{args.split}.json"
+    trace_path.parent.mkdir(parents=True, exist_ok=True)
+    trace_path.write_text(json.dumps(traces), encoding="utf-8")
     out = write_predictions(RUNS_DIR / config["name"] / f"pred_{args.split}.json", system=config["name"],
                             split=args.split, run=run,
                             meta={"config": config, "seconds": round(secs, 1),

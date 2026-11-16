@@ -270,6 +270,26 @@ Each phase ends with a **complete, scorable system** on dev, so stopping early s
 9. **Answers v0 (no LLM):** none; Phase A is retrieval-only.
 
 **Ablation rows produced:** A0 (BM25 on provisions), A1 (+dense/hybrid), A2 (+rerank), A3 (+metadata), A4 (+packer dedup/jurisdiction), A5 (+abstention).
+
+**Phase 2 interim results (dev, B=8,000 evidence recall; 2026-11-17)**
+
+| system | prov_lookup | definitional | numeric | cross_ref | jurisdictional | situational | abstain / false |
+|---|---:|---:|---:|---:|---:|---:|---|
+| bm25-windows (shipped) | 0.348 | 0.333 | 0.267 | 0.095 | 0.000 | 0.150 | 0.00 / 0.00 |
+| A0 BM25 over units + packer | 0.957 | 0.267 | 0.467 | 0.190 | 0.095 | 0.100 | 0.00 / 0.00 |
+| A3s + metadata (Act/section/state) | 1.000 | 0.333 | 0.467 | 0.167 | 0.286 | 0.100 | 0.00 / 0.00 |
+| A5s + rule abstention | 1.000 | 0.333 | 0.467 | 0.167 | 0.286 | 0.100 | 0.73 / 0.00 |
+| A2s + bge-reranker-v2-m3 (top-100) | 1.000 | 0.667 | 0.600 | 0.476 | 0.381 | 0.450 | 0.73 / 0.00 |
+
+- **Embedder (D9) decided: Qwen3-Embedding-0.6B.** Dev-only proxy (37k units, BM25-mined hard negatives):
+  R@10 qwen3 0.907 · e5-large-instruct 0.907 · bge-m3 0.867 · InLegalBERT 0.218; situational R@10/MRR
+  qwen3 0.95/0.71 vs e5 0.85/0.58. Cost: 8k tok/s (≈7 h full corpus) vs 22k for e5/bge. EmbeddingGemma (gated) and
+  Jina-v5 (remote code, CC BY-NC) not run. Proxy caveat: BM25-mined negatives penalise BM25, so the proxy's
+  "hybrid" numbers are not evidence about fusion; only dense-vs-dense comparisons are valid.
+- InLegalBERT (domain MLM, not a retriever) is far behind — report as a negative result.
+- Abstention threshold: NOT fixed yet. On A2s traces λ=2 picks a point with 5.9% false abstention (violates the
+  ≤5% criterion) driven by 2 questions; retune once on the final A pipeline, constrained to false abstention ≤ 5%.
+- Caveat: rule abstention (missing provision / unresolved law) was designed after reading dev unanswerables.
 **Done when:** A5 ≥ best BM25 baseline in every category on dev at B=8,000, with CIs logged.
 
 ### Phase 3 — Plan B: local LLM layer (Day 4–5)

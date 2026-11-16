@@ -27,20 +27,11 @@ from isr import DATA_DIR, RUNS_DIR
 from isr.corpus.build import UNITS_DIR
 from isr.eval.kit import questions_for
 from isr.index.bm25 import BM25
+from isr.index.dense import MAX_LEN, MODELS
 
 OUT = RUNS_DIR / "embedder_selection"
 POOL_PATH = DATA_DIR / "proxy_dev_pool.parquet"
-TASK = "Given a question about Indian law, retrieve the statutory provision that answers it"
-MAX_LEN = 512
 SEED = 20261116
-
-MODELS = {
-    "bge-m3": {"id": "BAAI/bge-m3", "q": "", "d": ""},
-    "qwen3-0.6b": {"id": "Qwen/Qwen3-Embedding-0.6B", "q": f"Instruct: {TASK}\nQuery: ", "d": ""},
-    "e5-large-instruct": {"id": "intfloat/multilingual-e5-large-instruct",
-                          "q": f"Instruct: {TASK}\nQuery: ", "d": ""},
-    "inlegalbert": {"id": "law-ai/InLegalBERT", "q": "", "d": ""},
-}
 
 
 def build_pool(qs: list[dict], bm25: BM25) -> pd.DataFrame:
