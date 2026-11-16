@@ -1,0 +1,13 @@
+# A5 (sparse-only variant) — A3s + deterministic abstention rules.
+name: A5s-bm25-units-metadata-abstain
+retrieve:
+  bm25: {k: 300, weight: 1.0}
+metadata:
+  act_bm25: {k: 100, weight: 1.0}
+  exact_ref: {weight: 2.0}
+  jur_bm25: {k: 100, weight: 0.5}
+abstain:
+  missing_provision: true
+  unresolved_law: true
+fusion: {k: 60}
+pack: {min_piece: 200}

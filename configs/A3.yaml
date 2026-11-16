@@ -1,0 +1,11 @@
+# A3 (sparse-only variant) — A0 + rule-based metadata signals (named Act, exact section, state).
+# Dense retrieval and the reranker are added in A1/A2 once the embedder is chosen.
+name: A3s-bm25-units-metadata
+retrieve:
+  bm25: {k: 300, weight: 1.0}
+metadata:
+  act_bm25: {k: 100, weight: 1.0}
+  exact_ref: {weight: 2.0}
+  jur_bm25: {k: 100, weight: 0.5}
+fusion: {k: 60}
+pack: {min_piece: 200}

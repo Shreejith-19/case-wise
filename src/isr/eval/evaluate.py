@@ -155,7 +155,7 @@ def format_summary(system: str, split: str, ci: dict, comparison: Optional[dict]
     lines = [f"system: {system}   split: {split}   tau: {TAU}   (mean [95% bootstrap CI])"]
     head = f"{'category':>18} {'B':>6}  {'recall':<19}{'precision':<19}{'all-groups':<19}{'mrr':<19}"
     if comparison:
-        head += f" Δrecall vs {ref_name} (* p<.05)"
+        head += f" d_recall vs {ref_name} (* p<.05)"
     lines.append(head)
     for cat, by_b in ci["retrieval"].items():
         for b, ms in by_b.items():
@@ -168,7 +168,7 @@ def format_summary(system: str, split: str, ci: dict, comparison: Optional[dict]
     line = (f"abstention (B={a['budget']}): unanswerable {_fmt(a['abstention_rate'])}   "
             f"false {_fmt(a['false_abstention'])}")
     if comparison:
-        line += (f"   Δ {_fmt_diff(comparison['abstention']['abstention_rate'])} / "
+        line += (f"   delta {_fmt_diff(comparison['abstention']['abstention_rate'])} / "
                  f"{_fmt_diff(comparison['abstention']['false_abstention'])}")
     lines.append(line)
     return "\n".join(lines)

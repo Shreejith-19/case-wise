@@ -1,0 +1,6 @@
+# A0 — BM25 over structure-aware units (provisions + sub-units + gap windows), dedup-aware packer.
+# Isolates RQ1: same sparse model family as the shipped baseline, different retrieval units.
+name: A0-bm25-units
+retrieve:
+  bm25: {k: 300}
+pack: {min_piece: 200}
