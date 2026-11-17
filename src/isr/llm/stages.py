@@ -156,10 +156,81 @@ Rules:
 - If the provisions do not answer the question, set "abstain" to true, "answer" to "" and "citations" to []."""
 
 
-def answer(llm: LLM, question: str, passages: str) -> dict:
-    r = llm.chat([{"role": "system", "content": SYSTEM},
-                  {"role": "user", "content": ANSWER_PROMPT.format(q=question, passages=passages)}],
-                 version=ANSWER_V, schema=ANSWER_SCHEMA, max_tokens=400)
+# v2 (Phase 3 v2, plan.md): explicit completeness + double-quote rules, and two worked examples built from
+# provisions that are gold for NO benchmark question (any split), each with a distractor passage.
+ANSWER_V2 = "answer-v2"
+ANSWER_PROMPT_V2 = """Answer the question using ONLY the numbered statutory provisions below.
+
+Question: {q}
+
+Provisions:
+{passages}
+
+Rules:
+- Answer in 1 to 4 sentences and answer every part of the question.
+- State every number, time limit, amount, condition, exception, authority and defined term the question asks \
+about, in the provisions' own words.
+- Copy the decisive phrases verbatim inside double quotes ("like this", never single quotes); every quoted \
+phrase must be at least 12 characters and copied exactly from a provision you cite.
+- "citations": the numbers of every provision you relied on, and only those.
+- If none of the provisions answers the question, set "abstain" to true, "answer" to "" and "citations" to []."""
+
+_FEWSHOT = [
+    ("A port operator lost a dispute before the adjudicating board set up for the major ports and wants to go to "
+     "the Supreme Court. How long does it have, and can a late appeal still be heard?",
+     "[1] Major Port Authorities Act, 2021 — Ch. VI, s. 60 Review and appeal\n"
+     "60. Review and appeal.—(1) Any party aggrieved by any decision or order of the Adjudicatory Board under this "
+     "Act, from which an appeal is allowed under sub-section (2), but from which no appeal has been preferred, may "
+     "apply for a review of such decision before the Adjudicatory Board, in such form and manner and within such "
+     "time, as may be prescribed, and the said Board may make such order thereon, as it thinks fit.\n"
+     "(2) Any party aggrieved by any decision or order of the Adjudicatory Board, may file an appeal to the Supreme "
+     "Court of India, within sixty days from the date of communication of such decision or order to him:\n"
+     "Provided that no appeal shall lie from a decision or order passed by the Adjudicatory Board with the consent "
+     "of parties:\nProvided further that the Supreme Court may, entertain any appeal after the expiry of sixty days, "
+     "if it is satisfied that the appellant was prevented by sufficient cause from preferring the appeal.\n\n"
+     "[2] Assam Town and Country Planning Act, 1959 — Ch. VII, s. 42 Appeal\n"
+     "42. Appeal.—(1) Any person aggrieved by the decision of the Authority with respect to matters of compensation "
+     "and betterment fee, may appeal to the Appellate Authority within thirty days of the award.",
+     {"answer": "The appeal lies to the Supreme Court \"within sixty days from the date of communication of such "
+                "decision or order\". A late appeal can still be heard if the Supreme Court \"is satisfied that the "
+                "appellant was prevented by sufficient cause from preferring the appeal\", but \"no appeal shall lie "
+                "from a decision or order passed by the Adjudicatory Board with the consent of parties\".",
+      "citations": [1], "abstain": False}),
+    ("Under West Bengal's anti-piracy law, does keeping duplicate copies of a film in storage for sale count as "
+     "piracy, and who is treated as the author of a sound recording?",
+     "[1] West Bengal Prohibition Of Audio-video Piracy Act, 2013 — Pt. III, s. 2 Definitions\n"
+     "2. In this Act, unless the context otherwise requires,—\n(a) \"author\" means in relation to a cinematograph "
+     "film or sound recording, the producer;\n(b) \"original work\" means the work over which copyright of the "
+     "author subsists;\n(c) \"Audio-Video Piracy\" means duplicating the original work without authorisation of the "
+     "author in respect of cinematograph film and sound recording, with a view to trading, selling or hiring of "
+     "those duplicate copies and includes any form of storage, distribution of such duplicate copies for the "
+     "purpose of trading, selling or hiring;\n\n"
+     "[2] Manipur Coaching Institute (Control and Regulation) Act, 2017 — s. 7\n"
+     "7. The complaints under this Act shall be filed before the Registering Authority. Such complaints shall be "
+     "disposed of within thirty days from the date of its receipt by the Registering Authority after making the "
+     "necessary inquiry.",
+     {"answer": "Yes. Audio-Video Piracy \"includes any form of storage, distribution of such duplicate copies for "
+                "the purpose of trading, selling or hiring\". The author is, \"in relation to a cinematograph film "
+                "or sound recording, the producer\".",
+      "citations": [1], "abstain": False}),
+]
+
+
+def answer(llm: LLM, question: str, passages: str, prompt: str = "v1", think: bool = False,
+           max_tokens: int = 400) -> dict:
+    import json as _json
+    if prompt == "v2":
+        msgs = [{"role": "system", "content": SYSTEM}]
+        for fq, fp, fa in _FEWSHOT:
+            msgs += [{"role": "user", "content": ANSWER_PROMPT_V2.format(q=fq, passages=fp)},
+                     {"role": "assistant", "content": _json.dumps(fa, ensure_ascii=False)}]
+        msgs.append({"role": "user", "content": ANSWER_PROMPT_V2.format(q=question, passages=passages)})
+        version = ANSWER_V2
+    else:
+        msgs = [{"role": "system", "content": SYSTEM},
+                {"role": "user", "content": ANSWER_PROMPT.format(q=question, passages=passages)}]
+        version = ANSWER_V
+    r = llm.chat(msgs, version=version, schema=ANSWER_SCHEMA, max_tokens=max_tokens, think=think)
     out = r.parsed if isinstance(r.parsed, dict) else {}
     return {"answer": str(out.get("answer", "")), "citations": [c for c in out.get("citations", []) if isinstance(c, int)],
             "abstain": bool(out.get("abstain", False))}

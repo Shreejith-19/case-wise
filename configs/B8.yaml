@@ -1,0 +1,19 @@
+﻿# B8 - B6 with answer prompt v2 (completeness + double quotes + 2 few-shot examples from non-gold provisions).
+name: B8-answers-v2
+retrieve:
+  bm25: {k: 300, weight: 1.0}
+  dense: {model: qwen3-0.6b, k: 300, weight: 1.0}
+metadata:
+  act_bm25: {k: 100, weight: 1.0}
+  exact_ref: {weight: 2.0}
+  jur_bm25: {k: 100, weight: 0.5}
+abstain:
+  missing_provision: true
+  unresolved_law: true
+  rerank_threshold: 0.041
+rerank: {model: bge-reranker-v2-m3, depth: 100, pin_exact: true}
+fusion: {k: 60}
+pack: {min_piece: 200}
+llm: {model: qwen3:8b}
+
+answer: {mode: llm, passages: 8, chars: 2500, prompt: v2}

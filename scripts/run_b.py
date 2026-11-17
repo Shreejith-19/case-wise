@@ -108,7 +108,12 @@ def main() -> int:
     # ---- stage 3: LLM rerank, judge, answers ------------------------------------------------------
     t0 = time.time()
     rr, jd, an = lc.get("llm_rerank"), lc.get("judge"), cfg.get("answer")
-    llm = LLM(lc.get("model", "qwen3:8b")) if (rr or jd or (an and an.get("mode") == "llm")) else None
+    llm = LLM(lc.get("model", "qwen3:8b")) if (rr or jd) else None
+    if an and an.get("mode") == "llm":      # the answer stage may use its own model / context size
+        am, actx = an.get("model", lc.get("model", "qwen3:8b")), an.get("num_ctx", 8192)
+        ans_llm = llm if (llm is not None and am == llm.model and actx == llm.num_ctx) else LLM(am, num_ctx=actx)
+    else:
+        ans_llm = None
     min_piece = cfg.get("pack", {}).get("min_piece", 200)
     run, answers = {}, {}
     for n, q in enumerate(qs, 1):
@@ -146,7 +151,8 @@ def main() -> int:
             else:
                 ps = passages_for(store, run[qid][HEADLINE_BUDGET], an.get("passages", 8), an.get("chars", 2500))
                 if an.get("mode") == "llm":
-                    o = S.answer(llm, q["question"], fmt_passages(ps))
+                    o = S.answer(ans_llm, q["question"], fmt_passages(ps), prompt=an.get("prompt", "v1"),
+                                 think=an.get("think", False), max_tokens=an.get("max_tokens", 400))
                     cited = [ps[i - 1] for i in o["citations"] if 1 <= i <= len(ps) and ps[i - 1]["key"]]
                     text = S.ground_quotes(o["answer"], [p["text"] for p in cited])   # cited only (= scorer haystack)
                     t["answer_raw"] = o
@@ -161,9 +167,9 @@ def main() -> int:
         traces[qid] = t
         if n % 25 == 0:
             print(f"  stage3 {n}/{len(qs)} ({time.time() - t0:.0f}s)", flush=True)
-    if llm is not None:
-        llm.unload()
-        timing["llm_stats"] = llm.stats
+    for m in {id(x): x for x in (llm, ans_llm) if x is not None}.values():
+        m.unload()
+        timing.setdefault("llm_stats", {})[m.model] = m.stats
     timing["stage3_s"] = round(time.time() - t0, 1)
 
     (out_dir / f"trace_{args.split}.json").write_text(json.dumps(traces, ensure_ascii=False), encoding="utf-8")

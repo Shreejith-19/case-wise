@@ -40,6 +40,7 @@ class Reply:
     prompt_tokens: int = 0
     eval_tokens: int = 0
     seconds: float = 0.0
+    thinking: str = ""
     cached: bool = False
 
     def p_yes(self) -> Optional[float]:
@@ -118,7 +119,7 @@ class LLM:
             t0 = time.time()
             out = _post("/api/chat", body)
             content = out["message"]["content"]
-            reply = Reply(content=content, logprobs=out.get("logprobs"),
+            reply = Reply(content=content, logprobs=out.get("logprobs"), thinking=out["message"].get("thinking") or "",
                           prompt_tokens=out.get("prompt_eval_count", 0), eval_tokens=out.get("eval_count", 0),
                           seconds=time.time() - t0)
             if schema is None:

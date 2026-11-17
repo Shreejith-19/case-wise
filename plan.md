@@ -409,7 +409,28 @@ Findings (honest reading):
   answer metrics. Dropped (user decision, 2026-11-17), reported as a negative ablation.
 - **Caveat on quote grounding:** qwen3 mostly quotes with single quotes, which the kit does not score; only ~13–20%
   of answers carry a scored (double-quoted, ≥12 chars) quote, so quote grounding = 1.000 covers a minority.
-- Not done (deferred, not needed for the decision): D8 second-model comparison (llama3.1:8b), thinking-on ablation.
+- Headroom diagnosis (B6, dev_tune, 128 required facts): 92 covered; 16 missed although present in the passages
+  given to the LLM (generation headroom ≤ +0.125 fact coverage); 17 missed because not retrieved (11 of them
+  cross_reference → Phase 4 xref expansion); 3 in wrongly abstained answers.
+
+**Phase 3 v2 — answer-generator variants (2026-11-17, user-approved; dev_tune, each vs B6; rule fixed in advance:
+adopt only a significant gain, else keep B6).** `scripts/answer_bootstrap.py`, paired bootstrap, n=90:
+
+| Config | change | fact cov. | cit. recall | cit. prec. | scored quotes | answer s/q |
+|---|---|---|---|---|---|---|
+| B6 (frozen) | qwen3:8b, answer-v1 | .744 | .767 | .657 | 13/90 | ~5 |
+| B8 | answer-v2: completeness + double-quote rules + 2 few-shot examples (non-gold provisions) | +.011 [−.033,+.061] | **−.122 [−.195,−.056]** | −.017 | **71/90** | ~6 |
+| B9 | thinking mode on (answer-v1) | +.022 [−.033,+.083] | −.017 [−.061,+.028] | +.002 | 25/90 | ~24 |
+| B10 | llama3.1:8b (answer-v1; D8) | **−.150 [−.244,−.061]** | **−.089** | **−.074** | 1/90 | ~6 |
+
+(Precision here counts a citation-less answer as 0, hence .657 vs the kit's .695 for B6.) **Nothing adopted; B6
+stays frozen as B-full; no further dev_holdout check.** Notes: B8's citation-recall loss is explained by both
+few-shot examples citing exactly one provision (B8 cites one provision in 76/86 answers; recall on the 14
+multi-citation questions .43 → .29); its quoting behaviour made quote grounding measurable on 71/90 answers (all
+grounded) instead of 13/90 — a verifiability gain that the decision rule does not count. Fixing the examples
+would be another dev_tune iteration; not done. Thinking mode costs ~5× latency for a non-significant +.022 and
+abstains more (5 vs 2 answerable). llama3.1:8b is clearly worse than qwen3:8b.
+- Not done: a larger model (qwen3:14b needs CPU offload on 8 GB; user did not select it).
 
 Phase 3 log (code changes made during Phase 3, all decided on dev_tune):
 1. `resolve_laws` v2: accept title matches whose year no copy has (LLM years unreliable).
