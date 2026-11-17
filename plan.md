@@ -1,6 +1,8 @@
 # Project Plan: Structure-Aware, LLM-Assisted RAG for Indian Statutory Law (IndiaStatRAG)
 
-> Status: **Phases 0–3 complete (2026-11-17)** — environment, pinned kit, eval wrapper, baselines
+> Status: **Phases 0–4 complete (2026-11-18)** — Plan C frozen as `configs/C_full.yaml` (§6 Phase 4 progress:
+> cross-reference expansion only). Next: Phase 5 (one frozen test run of A-full, B-full, C-full), pending approval.
+> Earlier: **Phases 0–3 complete (2026-11-17)** — environment, pinned kit, eval wrapper, baselines
 > reproduced exactly (README.md); unit store built (§6 Phase 1 results); Plan A frozen as `configs/A_full.yaml`
 > (§6 Phase 2 results); Plan B frozen as `configs/B_full.yaml` (§6 Phase 3 results: the LLM helps answers, not
 > retrieval). Next: Phase 4 (Plan C), pending approval. This document is the single source of truth for
@@ -486,7 +488,20 @@ re-run the same command. Implemented in `src/isr/pause.py`; tested on the card b
       **dev_holdout criterion, fixed before the run:** no category other than cross_reference may lose recall at
       B=8000 vs A-full (same questions), and false abstention must not rise; the cross_reference result
       (7 questions) is reported as observed, whatever it is. If the criterion fails, Plan C reverts to A-full.
-- [ ] C-full on dev_tune (+ answers), one dev_holdout check, sensitivity check (report only), commit.
+- [x] C-full on dev_tune with answers vs B6: retrieval = C3e; answers fact .739 vs .744 (−0.006, n.s.), citation
+      recall .789 vs .767 (+0.022 [−0.011, +0.061]), xref citation recall .429 → .571.
+- [x] **dev_holdout (scored once, logged): pre-registered criterion PASSES** — no recall change in any category
+      other than cross_reference at any budget; false abstention .067 (Δ 0 vs A-full). Cross_reference (n=7, as
+      observed): all-groups @8k .429 → .714 (2 wins / 1 loss), @2k .143 → .429, @32k .857 → 1.000; answers xref fact
+      .738 → .786, citation recall .643 → .714. Same direction as dev_tune → C-full stays frozen.
+- [x] Sensitivity (dev_tune, report only, `scripts/phase4_sensitivity.py`), xref all-groups @8k: frozen .429;
+      m=2 .357, m=5 .429, max_per=1 .429, max_per=3 .429, min_ce=0.018 .500, min_ce=0.1 .286, no incoming .286,
+      no expansion .214; other categories 0 recall changes in every variant. Not a lucky peak (and not the best
+      variant either — nothing was re-tuned after seeing this).
+
+**Phase 4 conclusion.** Plan C contributes one component, cross-reference expansion, which helps exactly the
+category it targets and nothing else; Act routing adds nothing over Plan A's implicit routing; jurisdiction mapping
+had no failures to fix on dev_tune (not built). LLM Act summaries (D10) not run: routing is not the bottleneck.
 
 ### Phase 5 — Evaluation, test runs, analysis (Day 7)
 1. Freeze configs (`configs/final_*.yaml`), tag git commit.
