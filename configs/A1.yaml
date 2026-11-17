@@ -1,0 +1,7 @@
+# A1 — hybrid: BM25 over units + Qwen3 dense, weighted RRF (no metadata, no rerank).
+name: A1-hybrid
+retrieve:
+  bm25: {k: 300, weight: 1.0}
+  dense: {model: qwen3-0.6b, k: 300, weight: 1.0}
+fusion: {k: 60}
+pack: {min_piece: 200}

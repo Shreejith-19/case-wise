@@ -39,7 +39,7 @@ def main() -> int:
     for n, q in enumerate(questions, 1):
         run[q["question_id"]], tr = pipe.run_traced(q["question"])
         traces[q["question_id"]] = {"abstain_reason": tr.abstain_reason, "rerank_top": tr.rerank_top,
-                                    "lists": {k: v[:20] for k, v in tr.lists.items()}, "final": tr.final[:20]}
+                                    "lists": {k: v[:300] for k, v in tr.lists.items()}, "final": tr.final[:100]}
         if n % 50 == 0:
             print(f"  {n}/{len(questions)} ({time.time() - t0:.0f}s)", flush=True)
     secs = time.time() - t0

@@ -148,7 +148,7 @@ class Pipeline:
             thr = ab.get("rerank_threshold")
             if thr is not None and not tr.abstain_reason and not pinned and (tr.rerank_top is None or tr.rerank_top < thr):
                 tr.abstain_reason = "low_rerank_score"
-        tr.final = fused[:50]
+        tr.final = fused[:100]
         return fused, tr
 
     def run(self, question: str, budgets: Sequence[int] = BUDGETS) -> dict[int, list]:

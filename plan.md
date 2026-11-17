@@ -1,7 +1,8 @@
 # Project Plan: Structure-Aware, LLM-Assisted RAG for Indian Statutory Law (IndiaStatRAG)
 
-> Status: **Phase 0 + Phase 1 complete (2026-11-16)** — environment, pinned kit, eval wrapper, baselines
-> reproduced exactly (README.md); unit store built (§6 Phase 1 results). Next: Phase 2. This document is the single source of truth for
+> Status: **Phases 0–2 complete (2026-11-17)** — environment, pinned kit, eval wrapper, baselines
+> reproduced exactly (README.md); unit store built (§6 Phase 1 results); Plan A frozen as `configs/A_full.yaml`
+> (§6 Phase 2 results). Next: Phase 3 (local LLM layer). This document is the single source of truth for
 > what we build, in what order, and how we evaluate it. Update the "Decision log" when anything changes.
 
 ---
@@ -271,15 +272,41 @@ Each phase ends with a **complete, scorable system** on dev, so stopping early s
 
 **Ablation rows produced:** A0 (BM25 on provisions), A1 (+dense/hybrid), A2 (+rerank), A3 (+metadata), A4 (+packer dedup/jurisdiction), A5 (+abstention).
 
-**Phase 2 interim results (dev, B=8,000 evidence recall; 2026-11-17)**
+**Phase 2 results (dev, B=8,000 evidence recall; 2026-11-17)** — full tables with CIs in `runs/<system>/pred_dev.report.json`
 
 | system | prov_lookup | definitional | numeric | cross_ref | jurisdictional | situational | abstain / false |
 |---|---:|---:|---:|---:|---:|---:|---|
 | bm25-windows (shipped) | 0.348 | 0.333 | 0.267 | 0.095 | 0.000 | 0.150 | 0.00 / 0.00 |
+| bm25-two-stage (shipped) | 0.391 | 0.267 | 0.267 | 0.048 | 0.143 | 0.150 | 0.00 / 0.00 |
 | A0 BM25 over units + packer | 0.957 | 0.267 | 0.467 | 0.190 | 0.095 | 0.100 | 0.00 / 0.00 |
 | A3s + metadata (Act/section/state) | 1.000 | 0.333 | 0.467 | 0.167 | 0.286 | 0.100 | 0.00 / 0.00 |
 | A5s + rule abstention | 1.000 | 0.333 | 0.467 | 0.167 | 0.286 | 0.100 | 0.73 / 0.00 |
 | A2s + bge-reranker-v2-m3 (top-100) | 1.000 | 0.667 | 0.600 | 0.476 | 0.381 | 0.450 | 0.73 / 0.00 |
+| A1d dense only (Qwen3-Emb-0.6B) | 0.957 | 0.667 | **0.867** | 0.524 | 0.714 | **0.750** | 0.00 / 0.00 |
+| A1 BM25 + dense, equal-weight RRF | 0.957 | 0.667 | 0.667 | 0.524 | 0.381 | 0.400 | 0.00 / 0.00 |
+| **A-full** (hybrid + metadata + rules + rerank + threshold 0.041) | **1.000** | **0.733** | 0.800 | **0.571** | **0.762** | **0.750** | **1.00 / 0.03** |
+
+MRR@8000 (prov/def/num/xref/jur/sit): A1d 0.77/0.37/0.66/0.36/0.36/0.46 → A-full 0.98/0.62/0.56/0.37/0.61/0.59.
+
+Findings (be honest about these in the paper):
+- **Dense retrieval is the single biggest lever.** Dense-only beats the entire lexical stack incl. reranker
+  (A2s) on situational (+0.30) and jurisdictional (+0.33). BM25 tops out at 0.42 candidate recall@20 (dev,
+  all answerable groups) vs 0.82 for dense; on situational 0.23 vs 0.90 (`scripts/candidate_recall.py`).
+- **Equal-weight RRF with BM25 hurts without a reranker** (A1 vs A1d: situational −0.35, jurisdictional −0.33,
+  numeric −0.20, all p<.05). With the reranker it is harmless: the fused top-100 contains 92% of gold groups
+  vs 94% for dense top-100, and the reranker lifts final@10 to 0.81 (dense@10 0.76). Fusion weights were
+  therefore **not** tuned (no evidence it would matter after reranking; avoids extra dev overfitting).
+- **A-full vs A1d at B=8,000 is not significant per category** (deltas −0.07…+0.07; prov +0.04). Its gains are
+  ranking quality (MRR), small budgets (B=2,000: definitional +0.33*, jurisdictional +0.24, situational +0.13,
+  prov +0.13) and abstention (+1.00*). B=32,000 is near saturation for both (0.79–1.00).
+- **Remaining retrieval loss is upstream:** ~8% of gold groups are not in the reranker's top-100 input at all;
+  worst is cross_reference (0.88 at @100, 0.57 recall at B=8,000) — the target for Plan C's reference graph.
+  Numeric is the one category where the reranker slightly hurts (0.867→0.800, n=15, n.s.).
+- **Abstention threshold = 0.041** (pre-registered rule: max abstention − 2·false, false ≤ 5%; dev 1.000 / 0.030,
+  4 of 135 answerable abstained — all four already had zero recall at B=8,000, so recall is unchanged). The margin is
+  thin: unanswerable top scores 0.034–0.037 interleave with answerable 0.020–0.035. Sensitivity point **0.018**
+  (0.867 / 0.000) to be reported alongside; expect higher false abstention on test than on dev.
+- Of the 15 dev unanswerables, 9 are caught by missing_provision, 2 by unresolved_law, 4 by the threshold.
 
 - **Embedder (D9) decided: Qwen3-Embedding-0.6B.** Dev-only proxy (37k units, BM25-mined hard negatives):
   R@10 qwen3 0.907 · e5-large-instruct 0.907 · bge-m3 0.867 · InLegalBERT 0.218; situational R@10/MRR
@@ -287,10 +314,13 @@ Each phase ends with a **complete, scorable system** on dev, so stopping early s
   Jina-v5 (remote code, CC BY-NC) not run. Proxy caveat: BM25-mined negatives penalise BM25, so the proxy's
   "hybrid" numbers are not evidence about fusion; only dense-vs-dense comparisons are valid.
 - InLegalBERT (domain MLM, not a retriever) is far behind — report as a negative result.
-- Abstention threshold: NOT fixed yet. On A2s traces λ=2 picks a point with 5.9% false abstention (violates the
-  ≤5% criterion) driven by 2 questions; retune once on the final A pipeline, constrained to false abstention ≤ 5%.
 - Caveat: rule abstention (missing provision / unresolved law) was designed after reading dev unanswerables.
-**Done when:** A5 ≥ best BM25 baseline in every category on dev at B=8,000, with CIs logged.
+- Caveat: the embedder was chosen on a proxy built from dev gold documents (4 candidates, no per-query tuning),
+  so dense dev numbers are mildly optimistic; test is the arbiter.
+- Not done (deliberately): Qwen3-Reranker-0.6B comparison, fill-vs-cutoff packer variants, jurisdiction-aware
+  copy choice in the packer. Revisit only if Phase 5 error analysis points at them.
+**Done when:** A5 ≥ best BM25 baseline in every category on dev at B=8,000, with CIs logged. **✔ Met** — A-full
+exceeds both shipped BM25 baselines in every category (smallest margin: cross_reference 0.571 vs 0.095).
 
 ### Phase 3 — Plan B: local LLM layer (Day 4–5)
 0. **LLM infra:** `src/isr/llm/` Ollama client — temperature 0, fixed seed, explicit `num_ctx`, JSON-schema structured output with retry-on-invalid, SQLite cache keyed by (model digest, prompt version, input hash), token/latency logging. Qwen3: thinking **off** by default; thinking-on is a separate ablation on `situational` only (it's slow).

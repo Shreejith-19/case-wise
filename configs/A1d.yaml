@@ -1,0 +1,5 @@
+# A1-x — dense-only baseline (Qwen3-Embedding-0.6B over unit representatives).
+name: A1d-dense-qwen3
+retrieve:
+  dense: {model: qwen3-0.6b, k: 300, weight: 1.0}
+pack: {min_piece: 200}
