@@ -72,6 +72,7 @@ running entirely on a consumer laptop with open models.
 | D9 | Primary embedder / reranker | Open → pick on dev proxy | Re-checked 2026-11-16: add EmbeddingGemma-300M and Jina-v5-text-small (CC BY-NC 4.0: OK for research, disclose) to the §6 Phase 2 shortlist. |
 | D11 | No Claude co-author / AI attribution in commits or PRs | **Locked** | User instruction. |
 | D12 | Plan A frozen as `configs/A_full.yaml`; not changed after the overfitting audit | **Locked** (2026-11-17) | Audit (§6 Phase 2) found no lucky-peak / rule overfit; variants that scored ≤1 question better on dev are *not* adopted. |
+| D13 | Test split stays sealed until Phase 5 (no early test run of A-full) | **Locked** (2026-11-17) | User decision: strictest protocol; all frozen systems scored on test once, together, at the end. |
 | D10 | LLM Act summaries for Phase C (≈15–20 GPU-hours for all 15k docs) | Open → decide after a 1k-doc trial | Cheap "card" version without LLM summaries is the default. |
 
 ---
