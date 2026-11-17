@@ -48,6 +48,25 @@ def rrf(lists: dict[str, list[int]], weights: dict[str, float], k: int = 60) -> 
     return [u for u, _ in sorted(score.items(), key=lambda kv: (-kv[1], kv[0]))]
 
 
+def named_provisions(p: ParsedQuery, store: UnitStore) -> tuple[list[str], list[int]]:
+    """Provision numbers named in the question, and the provision units that carry them in the resolved Acts."""
+    numbers = [n for kind, n in p.refs if kind in ("section", "article", "rule", "regulation")]
+    exact: list[int] = []
+    for n in numbers:
+        for d in p.act_document_ids:
+            exact.extend(store.provisions_numbered(d, n))
+    return numbers, exact
+
+
+def rule_abstain_reason(p: ParsedQuery, numbers: list[str], exact: list[int], ab: dict) -> str | None:
+    """Deterministic abstention: a resolved Act lacks the named provision, or a named law is not in the corpus."""
+    if ab.get("missing_provision") and p.act_document_ids and numbers and not exact:
+        return "missing_provision"
+    if ab.get("unresolved_law") and p.named_law_unresolved:
+        return "unresolved_law"
+    return None
+
+
 class Pipeline:
     def __init__(self, config: dict, store: UnitStore | None = None) -> None:
         self.config = config
@@ -114,11 +133,7 @@ class Pipeline:
             if "act_bm25" in md and act_docs:
                 lists["act_bm25"] = self._bm25(question, md["act_bm25"].get("k", 100), act_docs)
                 weights["act_bm25"] = md["act_bm25"].get("weight", 1.0)
-            numbers = [n for kind, n in p.refs if kind in ("section", "article", "rule", "regulation")]
-            exact: list[int] = []
-            for n in numbers:
-                for d in act_docs:
-                    exact.extend(self.store.provisions_numbered(d, n))
+            numbers, exact = named_provisions(p, self.store)
             if "exact_ref" in md and exact:
                 reps = [int(self.store.rep_of_class[self.store.class_id[u]]) for u in exact]
                 lists["exact_ref"] = list(dict.fromkeys(reps))
@@ -128,10 +143,7 @@ class Pipeline:
                 if jdocs:
                     lists["jur_bm25"] = self._bm25(question, md["jur_bm25"].get("k", 100), jdocs)
                     weights["jur_bm25"] = md["jur_bm25"].get("weight", 0.5)
-            if ab.get("missing_provision") and act_docs and numbers and not exact:
-                tr.abstain_reason = "missing_provision"
-            elif ab.get("unresolved_law") and p.named_law_unresolved:
-                tr.abstain_reason = "unresolved_law"
+            tr.abstain_reason = rule_abstain_reason(p, numbers, exact, ab)
         tr.lists = lists
         if not lists:
             raise ValueError("no retriever configured")

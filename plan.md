@@ -71,6 +71,7 @@ running entirely on a consumer laptop with open models.
 | D8 | Primary local LLM | Open → pick on dev | Re-checked 2026-11-16: Qwen3-8B (Q4_K_M) primary, Llama-3.1-8B-Instruct (Q4_K_M) secondary; both pulled in Phase 0. Gemma dropped from the default shortlist. |
 | D9 | Primary embedder / reranker | Open → pick on dev proxy | Re-checked 2026-11-16: add EmbeddingGemma-300M and Jina-v5-text-small (CC BY-NC 4.0: OK for research, disclose) to the §6 Phase 2 shortlist. |
 | D11 | No Claude co-author / AI attribution in commits or PRs | **Locked** | User instruction. |
+| D12 | Plan A frozen as `configs/A_full.yaml`; not changed after the overfitting audit | **Locked** (2026-11-17) | Audit (§6 Phase 2) found no lucky-peak / rule overfit; variants that scored ≤1 question better on dev are *not* adopted. |
 | D10 | LLM Act summaries for Phase C (≈15–20 GPU-hours for all 15k docs) | Open → decide after a 1k-doc trial | Cheap "card" version without LLM summaries is the default. |
 
 ---
@@ -321,6 +322,24 @@ Findings (be honest about these in the paper):
   copy choice in the packer. Revisit only if Phase 5 error analysis points at them.
 **Done when:** A5 ≥ best BM25 baseline in every category on dev at B=8,000, with CIs logged. **✔ Met** — A-full
 exceeds both shipped BM25 baselines in every category (smallest margin: cross_reference 0.571 vs 0.095).
+
+**Overfitting audit of Plan A (2026-11-17; `scripts/overfit_audit.py`, outputs in `runs/audit/`; test split untouched)**
+
+What dev could have leaked into: (i) the abstention threshold (numerically tuned), (ii) the embedder choice
+(4 candidates on a dev-derived proxy), (iii) the hand-written parser + abstention rules (written while reading dev
+questions), (iv) defaults that were never searched (fusion k, list weights, depth, min_piece, list k).
+
+| check | method | result | verdict |
+|---|---|---|---|
+| (i) threshold | 500× repeated stratified 5-fold CV of the pre-registered rule on dev traces | abstention in-sample 1.000 → **out-of-fold 0.937** [0.87, 1.00]; false 0.030 → **0.031** [0.02, 0.04]; chosen thr median 0.041 (p5–p95 0.035–0.044) | ~1 unanswerable (of 15) of optimism; false abstention not optimistic. Report the OOF numbers as the expected dev-level performance. |
+| (iii) rules on unseen Acts | synthetic questions about 600 Acts outside every dev gold doc / cluster / title (93% singletons), raw + cleaned titles | real section: Act resolved 99.8%, provision pinned 99.8%, **false abstention 0%**; section past the end: 99% abstain; foreign law: 95%; state-swapped name: 92% (cleaned) / 66% (ALL-CAPS titles) | Rules generalise beyond dev Acts. Known gaps, **not fixed** (fixing on the probe would just move the overfit): ALL-CAPS "ACT" and singular "Regulation" not seen as law names; a state prefix on a central Act's title ("MP Societies Registration Act, 1960") and "UK Companies Act 2006" resolve to the Indian/central Act via the year-mismatch fallback. |
+| (iv) untuned defaults | one-at-a-time perturbation of 16 settings | macro recall@8k **0.765–0.792** (frozen 0.769); abstention 1.00 throughout, false 0.022–0.044; best variant (BM25 weight 0) = +1 question in 2 categories, n.s. | Flat; frozen config is not on a dev peak (it is near the bottom). Not adopted (D12). BM25 adds nothing measurable after reranking on dev — say so. |
+| (ii) embedder | — (not re-runnable without new labelled data) | qwen3 vs e5 tied on R@10 (0.907); choice driven by situational R@10/MRR | Small selection optimism; disclose. |
+
+Residual risks the audit cannot remove: the abstention rules target the benchmark's dominant unanswerable
+pattern (real Act + out-of-range section) — that is a property of the question generator, and it transfers to
+test only if test was generated the same way; the probe's questions are templated, so it tests generalisation
+across Acts/titles, not across phrasing. The only definitive check is the frozen test run (Phase 5).
 
 ### Phase 3 — Plan B: local LLM layer (Day 4–5)
 0. **LLM infra:** `src/isr/llm/` Ollama client — temperature 0, fixed seed, explicit `num_ctx`, JSON-schema structured output with retry-on-invalid, SQLite cache keyed by (model digest, prompt version, input hash), token/latency logging. Qwen3: thinking **off** by default; thinking-on is a separate ablation on `situational` only (it's slow).
