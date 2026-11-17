@@ -115,12 +115,16 @@ class DenseIndex:
         self._model = None
         self._row_of = None
 
-    def encode_queries(self, queries: Sequence[str], batch: int = 32, as_document: bool = False) -> torch.Tensor:
+    def encode_queries(self, queries: Sequence[str], batch: int = 32, as_document: bool = False,
+                       instruction: str | None = None) -> torch.Tensor:
         """Queries get the model's instruction prefix; ``as_document`` encodes them like corpus passages
-        (used for HyDE pseudo-provisions)."""
+        (used for HyDE pseudo-provisions); ``instruction`` replaces the task text of instruction-tuned
+        embedders (used for Act-card retrieval, Phase 4)."""
         if self._model is None:
             self._model = load_model(self.model_name)
         prefix = MODELS[self.model_name]["d" if as_document else "q"]
+        if instruction and not as_document and prefix.startswith("Instruct: "):
+            prefix = f"Instruct: {instruction}\nQuery: "
         q = [prefix + x for x in queries]
         e = self._model.encode(q, batch_size=batch, normalize_embeddings=True, convert_to_tensor=True)
         return e.to(torch.float16)

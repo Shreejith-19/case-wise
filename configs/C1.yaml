@@ -1,0 +1,18 @@
+# C1 - A-full + Act routing: BM25 and dense restricted to the top-5 card-dense routed documents.
+name: C1-route
+retrieve:
+  bm25: {k: 300, weight: 1.0}
+  dense: {model: qwen3-0.6b, k: 300, weight: 1.0}
+metadata:
+  act_bm25: {k: 100, weight: 1.0}
+  exact_ref: {weight: 2.0}
+  jur_bm25: {k: 100, weight: 0.5}
+abstain:
+  missing_provision: true
+  unresolved_law: true
+  rerank_threshold: 0.041   # tuned on dev traces: max(abst - 2*false), false <= 5%  (dev: 1.000 / 0.030)
+rerank: {model: bge-reranker-v2-m3, depth: 100, pin_exact: true}
+fusion: {k: 60}
+pack: {min_piece: 200}
+planc:
+  route: {k_docs: 5, k: 100, weight: 1.0}

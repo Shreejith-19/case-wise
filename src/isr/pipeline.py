@@ -19,6 +19,7 @@ RRF. Config keys (configs/*.yaml):
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Sequence
 
@@ -39,6 +40,18 @@ class Trace:
     final: list[int] = field(default_factory=list)
     ce: dict[int, float] = field(default_factory=dict)   # cross-encoder score of every reranked unit
     pinned: list[int] = field(default_factory=list)      # exact named-provision hits kept on top
+    routed: list[str] = field(default_factory=list)      # Plan C: documents chosen by the Act router
+
+
+_PARTS = re.compile(r",\s*and\s+|;\s*|\s+and\s+(?=(?:who|what|which|when|where|how|whether|can|does|do|is|are|must"
+                    r"|may|will)\b)", re.I)
+
+
+def question_parts(question: str) -> list[str]:
+    """Sub-questions of a compound question ("Who can X, and what can Y?"); [] if it has only one part.
+    Rule fixed before the Phase 4 ablations (plan.md Phase 4 log)."""
+    ps = [p.strip(" ?") for p in _PARTS.split(question) if len(p.strip()) > 15]
+    return ps if len(ps) > 1 else []
 
 
 def rrf(lists: dict[str, list[int]], weights: dict[str, float], k: int = 60) -> list[int]:
@@ -86,6 +99,15 @@ class Pipeline:
         if config.get("rerank"):
             from isr.retrieve.rerank import Reranker
             self.reranker = Reranker(config["rerank"]["model"], self.store)
+        pc = config.get("planc") or {}
+        self.acts = None
+        if pc.get("route"):
+            from isr.acts import ActIndex
+            self.acts = ActIndex(self.dense)
+        self.xref = None
+        if pc.get("xref"):
+            from isr.xref import XrefGraph
+            self.xref = XrefGraph()
         self.jur_docs: dict[str, list[str]] = {}
         if config.get("metadata", {}).get("jur_bm25"):
             docs = self.store.docs
@@ -149,10 +171,24 @@ class Pipeline:
             tr.abstain_reason = rule_abstain_reason(p, numbers, exact, ab)
         if signals and cfg.get("llm"):
             self._llm_lists(question, signals, cfg["llm"], md, tr, lists, weights)
+        pc = cfg.get("planc") or {}
+        if self.acts is not None:
+            ro = pc["route"]
+            docs = self.acts.route_dense(question, k=ro.get("k_docs", 5))
+            tr.routed = docs
+            lists["route_bm25"] = self._bm25(question, ro.get("k", 100), docs)
+            weights["route_bm25"] = ro.get("weight", 1.0)
+            if self.dense is not None and ro.get("dense", True):
+                ids, _ = self.dense.search_within(question, self.store.reps_for_docs(docs), k=ro.get("k", 100))
+                lists["route_dense"] = [int(i) for i in ids]
+                weights["route_dense"] = ro.get("weight", 1.0)
         tr.lists = lists
         if not lists:
             raise ValueError("no retriever configured")
         fused = rrf(lists, weights, k=cfg.get("fusion", {}).get("k", 60)) if len(lists) > 1 else lists[next(iter(lists))]
+        xo = pc.get("xref") or {}
+        if self.xref is not None and xo.get("mode") == "pre":
+            fused = self._expand(fused, xo, scores=None)
         if self.reranker is not None:
             depth = cfg["rerank"].get("depth", 100)
             # exact named-provision hits stay on top: the reranker only orders the rest
@@ -167,8 +203,58 @@ class Pipeline:
             thr = ab.get("rerank_threshold")
             if thr is not None and not tr.abstain_reason and not pinned and (tr.rerank_top is None or tr.rerank_top < thr):
                 tr.abstain_reason = "low_rerank_score"
+        if self.xref is not None and xo.get("mode") == "post" and not tr.abstain_reason:
+            ps = question_parts(question)
+            if not xo.get("multipart_only") or ps:
+                fused = self._expand(fused, xo, scores=tr.ce, parts=ps if xo.get("part_scores") else None)
         tr.final = fused[:100]
         return fused, tr
+
+    def _provision_rep(self, u: int) -> int | None:
+        """Representative of the provision a ranked unit belongs to (sub-unit -> parent; gap window -> None)."""
+        s = self.store
+        if s.kind[u] == "subunit":
+            u = int(s.parent[u])
+        elif s.kind[u] != "provision":
+            return None
+        return int(s.rep_of_class[s.class_id[u]])
+
+    def _expand(self, ranked: list[int], xo: dict, scores: dict[int, float] | None,
+                parts: list[str] | None = None) -> list[int]:
+        """Cross-reference expansion (Plan C, plan.md Phase 4.4): directly after each of the top-``m`` units,
+        insert up to ``max_per`` provisions it cites (and, with ``incoming``, provisions citing it) that are not
+        already ranked above. Neighbours are ordered by cross-encoder score when known, else graph order.
+        With ``parts`` (sub-questions), neighbours are scored by the cross-encoder against each part and ordered
+        by their best part score; ``min_ce`` then drops neighbours below that score."""
+        m, max_per = xo.get("m", 3), xo.get("max_per", 2)
+        seen_prov = {self._provision_rep(u) for u in ranked[:m]}
+        out, placed = [], set()
+        for i, u in enumerate(ranked):
+            if u in placed:
+                continue
+            out.append(u)
+            placed.add(u)
+            if i >= m:
+                continue
+            p = self._provision_rep(u)
+            if p is None:
+                continue
+            nb = list(self.xref.out.get(p, []))
+            if xo.get("incoming"):
+                nb += self.xref.inc.get(p, [])
+            nb = [v for v in dict.fromkeys(nb) if v not in placed and v not in seen_prov]
+            if parts and nb and self.reranker is not None:
+                best = np.max(np.stack([self.reranker.scores(x, nb) for x in parts]), axis=0)
+                sc = dict(zip(nb, best.tolist()))
+                nb = [v for v in nb if sc[v] >= xo.get("min_ce", -1e9)]
+                nb.sort(key=lambda v: -sc[v])
+            elif scores:
+                nb.sort(key=lambda v: -scores.get(v, -1e9))
+            for v in nb[:max_per]:
+                out.append(v)
+                placed.add(v)
+                seen_prov.add(v)
+        return out
 
     def _llm_lists(self, question: str, sig: dict, lc: dict, md: dict, tr: Trace,
                    lists: dict[str, list[int]], weights: dict[str, float]) -> None:
@@ -202,6 +288,8 @@ class Pipeline:
             self.dense = None
         if self.reranker is not None:
             self.reranker.close()
+        if self.acts is not None:
+            self.acts.close()
 
     def run(self, question: str, budgets: Sequence[int] = BUDGETS) -> dict[int, list]:
         return self.run_traced(question, budgets)[0]

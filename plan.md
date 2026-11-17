@@ -76,6 +76,7 @@ running entirely on a consumer laptop with open models.
 | D13 | Test split stays sealed until Phase 5 (no early test run of A-full) | **Locked** (2026-11-17) | User decision: strictest protocol; all frozen systems scored on test once, together, at the end. |
 | D14 | Dev split into dev_tune (100) / dev_holdout (50), stratified by category, seed 20261117 (`configs/dev_split.json`) | **Locked** (2026-11-17) | All Phase 3+ selection on dev_tune; dev_holdout scored only for frozen configs, with `--test-note`, logged in `HOLDOUT_RUNS.md`. |
 | D15 | Plan B frozen as `configs/B_full.yaml` = Plan A retrieval + qwen3:8b cited answers | **Locked** (2026-11-17) | User decision. LLM query analysis, HyDE, LLM rerank and LLM judge dropped: no significant gain on dev_tune (§6 Phase 3 results). |
+| D16 | Plan C frozen as `configs/C_full.yaml` = A-full + cross-reference expansion (C3e) + B-full answers; Act routing and jurisdiction mapping not used | **Locked** (2026-11-18) | User decision; xref gain not significant on dev_tune (n=14) but no regressions; holdout criterion pre-registered (§6 Phase 4 progress). |
 | D10 | LLM Act summaries for Phase C (≈15–20 GPU-hours for all 15k docs) | Open → decide after a 1k-doc trial | Cheap "card" version without LLM summaries is the default. |
 
 ---
@@ -451,6 +452,41 @@ Phase 3 log (code changes made during Phase 3, all decided on dev_tune):
 
 **Ablation rows:** C1 (+Act routing), C2 (+LLM summaries, if D10 = yes), C3 (+xref expansion), C4 (+jurisdiction mapping) = **full system**.
 **Done when:** gains on dev `cross_reference` all-groups and `jurisdictional` recall, no regression elsewhere beyond CI noise.
+
+#### Phase 4 progress (resume point; `python scripts/phase4.py status`)
+Pause/resume: create `PAUSE` in the repo root → long jobs stop at the next checkpoint (exit 3); delete it and
+re-run the same command. Implemented in `src/isr/pause.py`; tested on the card build (paused at chunk 3/16, resumed).
+- [x] Pre-build diagnosis (dev_tune): all 14 cross_reference questions = two provisions of the same Act where the
+      first cites the second; jurisdictional misses are wrong-Act-right-State (no wrong-State copies) → C4 has no
+      target on dev_tune. (A first count was accidentally run on full dev incl. dev_holdout — structural count only,
+      no tuning; repeated on dev_tune.)
+- [x] Act-card index (`isr.acts`, 15,325 cards, qwen3-0.6b, 4.6 min). Routing diagnostic: card-dense beats
+      Plan A's own doc ranking on jurisdictional (top-5 .93 vs .79) and definitional (top-1 .80 vs .50); card BM25
+      is weak (top-5 .53) → router = card-dense only.
+- [x] xref graph (`isr.xref`, 184k edges, 2.6 min); contains the gold A→B edge for 13/14 dev_tune xref questions.
+- [x] Ablations on dev_tune vs A-full (retrieval, B=8000; parameters fixed a priori, not swept):
+
+| Config | change | xref recall | xref all-groups | other categories |
+|---|---|---|---|---|
+| C1 | + BM25/dense restricted to top-5 card-dense routed docs | ±0 | ±0 | def +1 q, sit −1 q, +1 false abstention → dropped |
+| C3a | xref expansion after rerank, top-3 units, ≤2 cited provisions each | +.036 | .214→.357 | jur −2, def −1, num@2k −2 q |
+| C3b | C3a + citing provisions (incoming edges) | +.143 | .214→.571 | jur −2, def −1, sit −1, num@2k −3 (sig.) |
+| C3c | cited provisions inserted *before* rerank (CE decides) | ±0 | ±0 | ±0 (CE scores partners low) |
+| C3d | C3b only for multi-part questions, partners ordered by best sub-question CE | +.036 | .214→.429 | num −1 q |
+| **C3e** | **C3d + partner needs best sub-question CE ≥ 0.041 (existing abstention threshold)** | **+.071** | **.214→.429** | **none: 0 recall changes on the other 76 answerable, any budget** |
+
+  Why C3c/C3d: the partner provision answers the *second part* of a compound question, so the cross-encoder scores
+  it low against the whole question (diagnostic: gold-partner full-question CE median .040 vs .080 best-part);
+  a CE gate alone does not separate partners from noise (at 0.041: keeps 62% of partners, 27% of 388 non-gold
+  neighbours), but question shape does (multi-part: 11/14 xref vs 6/76 other answerable). Part-splitting rule
+  (`pipeline.question_parts`) fixed before C3d/C3e were run; two rounds of xref variants in total, then stopped.
+  C3e vs A-full, xref all-groups: +0.214 [−0.07, +0.50], p = 0.24, 4 wins / 1 loss (n = 14) — **not significant**.
+- [x] **D16 (user decision, 2026-11-18): adopt C3e as Plan C** despite non-significance (principled mechanism,
+      graph covers 13/14 gold links, zero regressions). Frozen as `configs/C_full.yaml` (+ B-full answers).
+      **dev_holdout criterion, fixed before the run:** no category other than cross_reference may lose recall at
+      B=8000 vs A-full (same questions), and false abstention must not rise; the cross_reference result
+      (7 questions) is reported as observed, whatever it is. If the criterion fails, Plan C reverts to A-full.
+- [ ] C-full on dev_tune (+ answers), one dev_holdout check, sensitivity check (report only), commit.
 
 ### Phase 5 — Evaluation, test runs, analysis (Day 7)
 1. Freeze configs (`configs/final_*.yaml`), tag git commit.
