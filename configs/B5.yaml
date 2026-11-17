@@ -1,0 +1,26 @@
+# B5 - B4 + LLM cited answers (quotes verified against cited text).
+name: B5-answers
+retrieve:
+  bm25: {k: 300, weight: 1.0}
+  dense: {model: qwen3-0.6b, k: 300, weight: 1.0}
+metadata:
+  act_bm25: {k: 100, weight: 1.0}
+  exact_ref: {weight: 2.0}
+  jur_bm25: {k: 100, weight: 0.5}
+abstain:
+  missing_provision: true
+  unresolved_law: true
+  rerank_threshold: 0.041
+rerank: {model: bge-reranker-v2-m3, depth: 100, pin_exact: true}
+fusion: {k: 60}
+pack: {min_piece: 200}
+llm:
+  model: qwen3:8b
+  act_bm25: {k: 100, weight: 1.0}      # BM25 inside LLM-suggested Acts (question + LLM keywords)
+  act_dense: {k: 100, weight: 1.0}     # dense inside LLM-suggested Acts
+  keywords_bm25: {k: 300, weight: 0.5} # BM25 on LLM keywords alone
+  jurisdiction: true                    # LLM jurisdiction when the rules find none
+  hyde: {k: 300, weight: 1.0}          # dense search with a hypothetical provision (passage-encoded)
+  llm_rerank: {depth: 20, mix: 0.5, chars: 2000}   # score = 0.5*P(yes) + 0.5*cross-encoder
+  judge: {passages: 5, chars: 1200, p: 0.5, ce_hi: 0.5}   # abstain if P(answerable)<0.5 and CE top<0.5 and nothing pinned
+answer: {mode: llm, passages: 8, chars: 2500}

@@ -37,6 +37,8 @@ class Trace:
     abstain_reason: str | None = None
     rerank_top: float | None = None          # best cross-encoder score (for threshold abstention)
     final: list[int] = field(default_factory=list)
+    ce: dict[int, float] = field(default_factory=dict)   # cross-encoder score of every reranked unit
+    pinned: list[int] = field(default_factory=list)      # exact named-provision hits kept on top
 
 
 def rrf(lists: dict[str, list[int]], weights: dict[str, float], k: int = 60) -> list[int]:
@@ -111,7 +113,8 @@ class Pipeline:
 
     # --- stages -----------------------------------------------------------------------
 
-    def rank(self, question: str) -> tuple[list[int], Trace]:
+    def rank(self, question: str, signals: dict | None = None) -> tuple[list[int], Trace]:
+        """``signals``: Plan B stage-1 LLM outputs (see isr.llm.run): act_docs, keywords, hyde, jurisdiction."""
         cfg = self.config
         tr = Trace()
         lists: dict[str, list[int]] = {}
@@ -144,6 +147,8 @@ class Pipeline:
                     lists["jur_bm25"] = self._bm25(question, md["jur_bm25"].get("k", 100), jdocs)
                     weights["jur_bm25"] = md["jur_bm25"].get("weight", 0.5)
             tr.abstain_reason = rule_abstain_reason(p, numbers, exact, ab)
+        if signals and cfg.get("llm"):
+            self._llm_lists(question, signals, cfg["llm"], md, tr, lists, weights)
         tr.lists = lists
         if not lists:
             raise ValueError("no retriever configured")
@@ -156,12 +161,47 @@ class Pipeline:
             rest = [u for u in fused if u not in pinned_set]
             reranked, top = self.reranker.rerank(question, rest, depth)
             tr.rerank_top = float(top[0]) if len(top) else None
+            tr.ce = {int(u): float(sc) for u, sc in zip(reranked[:len(top)], top)}
+            tr.pinned = pinned
             fused = pinned + reranked
             thr = ab.get("rerank_threshold")
             if thr is not None and not tr.abstain_reason and not pinned and (tr.rerank_top is None or tr.rerank_top < thr):
                 tr.abstain_reason = "low_rerank_score"
         tr.final = fused[:100]
         return fused, tr
+
+    def _llm_lists(self, question: str, sig: dict, lc: dict, md: dict, tr: Trace,
+                   lists: dict[str, list[int]], weights: dict[str, float]) -> None:
+        acts = sig.get("act_docs") or []
+        kw = " ".join(sig.get("keywords") or [])
+        if "act_bm25" in lc and acts:
+            lists["llm_act_bm25"] = self._bm25(f"{question} {kw}", lc["act_bm25"].get("k", 100), acts)
+            weights["llm_act_bm25"] = lc["act_bm25"].get("weight", 1.0)
+        if "act_dense" in lc and acts and self.dense is not None:
+            ids, _ = self.dense.search_within(question, self.store.reps_for_docs(acts), k=lc["act_dense"].get("k", 100))
+            lists["llm_act_dense"] = [int(i) for i in ids]
+            weights["llm_act_dense"] = lc["act_dense"].get("weight", 1.0)
+        if "keywords_bm25" in lc and kw:
+            lists["llm_kw_bm25"] = self._bm25(kw, lc["keywords_bm25"].get("k", 300))
+            weights["llm_kw_bm25"] = lc["keywords_bm25"].get("weight", 0.5)
+        if "hyde" in lc and sig.get("hyde") and self.dense is not None:
+            ids, _ = self.dense.search([sig["hyde"]], k=lc["hyde"].get("k", 300), as_document=True)[0]
+            lists["hyde"] = [int(i) for i in ids]
+            weights["hyde"] = lc["hyde"].get("weight", 1.0)
+        j = sig.get("jurisdiction")
+        if lc.get("jurisdiction") and j and "jur_bm25" in md and "jur_bm25" not in lists:
+            jdocs = self.jur_docs.get(j, [])
+            if jdocs:
+                lists["jur_bm25"] = self._bm25(question, md["jur_bm25"].get("k", 100), jdocs)
+                weights["jur_bm25"] = md["jur_bm25"].get("weight", 0.5)
+
+    def close_gpu(self) -> None:
+        """Release GPU models (dense index, embedder, cross-encoder) so the LLM can use the GPU."""
+        if self.dense is not None:
+            self.dense.close()
+            self.dense = None
+        if self.reranker is not None:
+            self.reranker.close()
 
     def run(self, question: str, budgets: Sequence[int] = BUDGETS) -> dict[int, list]:
         return self.run_traced(question, budgets)[0]

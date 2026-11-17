@@ -48,8 +48,9 @@ def gold_classes(qs, store: UnitStore) -> dict[str, list[set[int]]]:
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("traces", nargs="+", type=Path)
+    p.add_argument("--split", default="dev")
     args = p.parse_args()
-    qs = [q for q in questions_for("dev") if not q["unanswerable"]]
+    qs = [q for q in questions_for(args.split) if not q["unanswerable"]]
     cat = {q["question_id"]: q["category"] for q in qs}
     store = UnitStore()
     gold = gold_classes(qs, store)

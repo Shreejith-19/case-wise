@@ -21,12 +21,15 @@ from typing import Optional, Sequence
 import numpy as np
 
 from isr import CORPUS_DIR, ROOT
-from isr.eval.kit import BUDGETS, HEADLINE_BUDGET, TAU, kit_score, load_predictions, questions_for
+from isr.eval.kit import (BUDGETS, DEV_SUBSETS, HEADLINE_BUDGET, TAU, kit_score, load_predictions,
+                          questions_for)
 
 METRICS = ("evidence_recall", "evidence_precision", "all_groups", "document_recall", "mrr")
 DEFAULT_BOOT = 1000
 DEFAULT_SEED = 20261116
 TEST_LOG = ROOT / "TEST_RUNS.md"
+HOLDOUT_LOG = ROOT / "HOLDOUT_RUNS.md"
+NOTE_REQUIRED = ("test", "all", "dev_holdout")
 
 
 # --- per-question rows ----------------------------------------------------------------
@@ -177,14 +180,31 @@ def format_summary(system: str, split: str, ci: dict, comparison: Optional[dict]
 # --- entry point ----------------------------------------------------------------------
 
 
+def _load(path: Path, split: str, questions: Sequence[dict]) -> dict:
+    """Load predictions for ``split``. A dev subset may be scored from a dev or same-subset file
+    (predictions for the other dev questions are dropped)."""
+    if split not in DEV_SUBSETS:
+        loaded = load_predictions(path, questions)
+        if loaded["split"] and loaded["split"] != split:
+            raise ValueError(f"{path} says split {loaded['split']!r}, asked to score {split!r}")
+        return loaded
+    loaded = load_predictions(path, questions_for("dev"))
+    if loaded["split"] and loaded["split"] not in ("dev", split):
+        raise ValueError(f"{path} says split {loaded['split']!r}, asked to score {split!r}")
+    ids = {q["question_id"] for q in questions}
+    loaded["run"] = {k: v for k, v in loaded["run"].items() if k in ids}
+    if loaded["answers"]:
+        loaded["answers"] = {k: v for k, v in loaded["answers"].items() if k in ids}
+    loaded["missing"] = [m for m in loaded["missing"] if m in ids]
+    return loaded
+
+
 def evaluate(pred_path: Path, split: str, *, compare_path: Optional[Path] = None,
              n_boot: int = DEFAULT_BOOT, seed: int = DEFAULT_SEED) -> dict:
     from benchmark.questions import Corpus  # kit module, path set up by isr.eval.kit
 
     questions = questions_for(split)
-    loaded = load_predictions(pred_path, questions)
-    if loaded["split"] and loaded["split"] != split:
-        raise ValueError(f"{pred_path} says split {loaded['split']!r}, asked to score {split!r}")
+    loaded = _load(pred_path, split, questions)
     official = kit_score.score_run(
         questions, loaded["run"], system=loaded["system"], corpus_dir=CORPUS_DIR,
         corpus=Corpus(CORPUS_DIR), answers=loaded["answers"], budgets=BUDGETS, tau=TAU,
@@ -195,20 +215,22 @@ def evaluate(pred_path: Path, split: str, *, compare_path: Optional[Path] = None
               "ci": confidence_intervals(questions, rows, n_boot, seed),
               "bootstrap": {"resamples": n_boot, "seed": seed}}
     if compare_path:
-        ref = load_predictions(compare_path, questions)
+        ref = _load(compare_path, split, questions)
         result["compared_to"] = {"system": ref["system"], "predictions": str(compare_path)}
         result["comparison"] = compare(questions, rows, question_rows(questions, ref["run"]), n_boot, seed)
     return result
 
 
 def _log_test_run(result: dict, note: str) -> None:
+    log = HOLDOUT_LOG if result["split"] == "dev_holdout" else TEST_LOG
     fp = result["official"]["corpus"]
     row = (f"| {dt.datetime.now().isoformat(timespec='minutes')} | {result['system']} | "
            f"`{result['predictions']}` | {fp['checksums_sha256'][:12]} | {note} |\n")
-    if not TEST_LOG.exists():
-        TEST_LOG.write_text("# Test-split evaluations\n\n| when | system | predictions | corpus | note |\n"
-                            "|---|---|---|---|---|\n", encoding="utf-8")
-    with open(TEST_LOG, "a", encoding="utf-8") as fh:
+    if not log.exists():
+        title = "dev_holdout evaluations (plan.md D14)" if log == HOLDOUT_LOG else "Test-split evaluations"
+        log.write_text(f"# {title}\n\n| when | system | predictions | corpus | note |\n"
+                       "|---|---|---|---|---|\n", encoding="utf-8")
+    with open(log, "a", encoding="utf-8") as fh:
         fh.write(row)
 
 
@@ -216,7 +238,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     p = argparse.ArgumentParser(prog="python -m isr.eval.evaluate", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("predictions", type=Path)
-    p.add_argument("--split", required=True, choices=["dev", "test", "all"])
+    p.add_argument("--split", required=True, choices=["dev", "test", "all", *DEV_SUBSETS])
     p.add_argument("--compare", type=Path, help="Reference predictions file (same split) for paired tests.")
     p.add_argument("--out", type=Path, help="Write the full JSON report here (default: next to predictions).")
     p.add_argument("--boot", type=int, default=DEFAULT_BOOT)
@@ -224,8 +246,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     p.add_argument("--test-note", help="Required for --split test/all: why this test run is happening.")
     args = p.parse_args(argv)
 
-    if args.split in ("test", "all") and not args.test_note:
-        p.error("test-split evaluation requires --test-note (it is logged to TEST_RUNS.md; plan.md D6)")
+    if args.split in NOTE_REQUIRED and not args.test_note:
+        p.error(f"{args.split} evaluation requires --test-note (logged to TEST_RUNS.md / HOLDOUT_RUNS.md; plan.md D6)")
 
     result = evaluate(args.predictions, args.split, compare_path=args.compare,
                       n_boot=args.boot, seed=args.seed)
@@ -239,9 +261,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     out = args.out or args.predictions.with_name(args.predictions.stem + ".report.json")
     out.write_text(json.dumps(result, indent=1, ensure_ascii=False), encoding="utf-8")
     print(f"wrote {out}")
-    if args.split in ("test", "all"):
+    if args.split in NOTE_REQUIRED:
         _log_test_run(result, args.test_note)
-        print(f"logged to {TEST_LOG.name}")
+        print(f"logged to {(HOLDOUT_LOG if args.split == 'dev_holdout' else TEST_LOG).name}")
     return 0
 
 

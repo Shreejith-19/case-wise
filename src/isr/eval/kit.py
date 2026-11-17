@@ -28,11 +28,20 @@ __all__ = ["kit_predictions", "kit_score", "kit_splits", "questions_for", "BUDGE
            "HEADLINE_BUDGET", "TAU", "SPLIT_FILE", "CORPUS_DIR"]
 
 
+DEV_SUBSETS = ("dev_tune", "dev_holdout")
+
+
 def questions_for(split: str) -> list[dict]:
-    """Verified questions of one split: 'dev', 'test' or 'all'."""
+    """Verified questions of one split: 'dev', 'test', 'all', or a fixed dev subset
+    ('dev_tune' / 'dev_holdout', configs/dev_split.json)."""
     verified = load_questions(verified_only=True)
     if split == "all":
         return verified
+    if split in DEV_SUBSETS:
+        import json
+        from isr import ROOT
+        ids = set(json.loads((ROOT / "configs" / "dev_split.json").read_text(encoding="utf-8"))[split])
+        return [q for q in kit_splits.select(verified, SPLIT_FILE, "dev") if q["question_id"] in ids]
     return kit_splits.select(verified, SPLIT_FILE, split)
 
 

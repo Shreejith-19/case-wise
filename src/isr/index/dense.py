@@ -113,16 +113,21 @@ class DenseIndex:
         for s in range(0, len(emb), chunk):
             self.emb[s:s + chunk] = torch.from_numpy(np.ascontiguousarray(emb[s:s + chunk])).cuda()
         self._model = None
+        self._row_of = None
 
-    def encode_queries(self, queries: Sequence[str], batch: int = 32) -> torch.Tensor:
+    def encode_queries(self, queries: Sequence[str], batch: int = 32, as_document: bool = False) -> torch.Tensor:
+        """Queries get the model's instruction prefix; ``as_document`` encodes them like corpus passages
+        (used for HyDE pseudo-provisions)."""
         if self._model is None:
             self._model = load_model(self.model_name)
-        q = [MODELS[self.model_name]["q"] + x for x in queries]
+        prefix = MODELS[self.model_name]["d" if as_document else "q"]
+        q = [prefix + x for x in queries]
         e = self._model.encode(q, batch_size=batch, normalize_embeddings=True, convert_to_tensor=True)
         return e.to(torch.float16)
 
-    def search(self, queries: Sequence[str], k: int = 300) -> list[tuple[np.ndarray, np.ndarray]]:
-        qe = self.encode_queries(queries)
+    def search(self, queries: Sequence[str], k: int = 300,
+               as_document: bool = False) -> list[tuple[np.ndarray, np.ndarray]]:
+        qe = self.encode_queries(queries, as_document=as_document)
         out = []
         for i in range(0, len(qe), 64):
             sims = qe[i:i + 64] @ self.emb.T
@@ -130,6 +135,21 @@ class DenseIndex:
             for row_s, row_ix in zip(s.cpu().numpy(), ix.cpu().numpy()):
                 out.append((self.unit_ids[row_ix], row_s))
         return out
+
+    def search_within(self, query: str, uids: Sequence[int], k: int = 100) -> tuple[np.ndarray, np.ndarray]:
+        """Dense search restricted to the given (representative) unit ids."""
+        if self._row_of is None:
+            self._row_of = np.full(int(self.unit_ids.max()) + 1, -1, np.int64)
+            self._row_of[self.unit_ids] = np.arange(len(self.unit_ids))
+        uids = np.asarray(uids, np.int64)
+        rows = self._row_of[uids[uids <= len(self._row_of) - 1]]
+        rows = rows[rows >= 0]
+        if len(rows) == 0:
+            return np.empty(0, np.int64), np.empty(0, np.float32)
+        qe = self.encode_queries([query])
+        sims = (qe @ self.emb[torch.from_numpy(rows).cuda()].T).float()[0]
+        s, ix = torch.topk(sims, k=min(k, len(rows)))
+        return self.unit_ids[rows[ix.cpu().numpy()]], s.cpu().numpy()
 
     def close(self) -> None:
         del self.emb

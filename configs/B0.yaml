@@ -1,0 +1,17 @@
+# B0 - control: A-full + extractive (non-LLM) answer = quote of the top provision. Checks plumbing; answer baseline.
+name: B0-Afull-extractive
+retrieve:
+  bm25: {k: 300, weight: 1.0}
+  dense: {model: qwen3-0.6b, k: 300, weight: 1.0}
+metadata:
+  act_bm25: {k: 100, weight: 1.0}
+  exact_ref: {weight: 2.0}
+  jur_bm25: {k: 100, weight: 0.5}
+abstain:
+  missing_provision: true
+  unresolved_law: true
+  rerank_threshold: 0.041
+rerank: {model: bge-reranker-v2-m3, depth: 100, pin_exact: true}
+fusion: {k: 60}
+pack: {min_piece: 200}
+answer: {mode: extractive, passages: 8, snippet: 400}

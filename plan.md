@@ -1,8 +1,9 @@
 # Project Plan: Structure-Aware, LLM-Assisted RAG for Indian Statutory Law (IndiaStatRAG)
 
-> Status: **Phases 0–2 complete (2026-11-17)** — environment, pinned kit, eval wrapper, baselines
+> Status: **Phases 0–3 complete (2026-11-17)** — environment, pinned kit, eval wrapper, baselines
 > reproduced exactly (README.md); unit store built (§6 Phase 1 results); Plan A frozen as `configs/A_full.yaml`
-> (§6 Phase 2 results). Next: Phase 3 (local LLM layer). This document is the single source of truth for
+> (§6 Phase 2 results); Plan B frozen as `configs/B_full.yaml` (§6 Phase 3 results: the LLM helps answers, not
+> retrieval). Next: Phase 4 (Plan C), pending approval. This document is the single source of truth for
 > what we build, in what order, and how we evaluate it. Update the "Decision log" when anything changes.
 
 ---
@@ -73,6 +74,8 @@ running entirely on a consumer laptop with open models.
 | D11 | No Claude co-author / AI attribution in commits or PRs | **Locked** | User instruction. |
 | D12 | Plan A frozen as `configs/A_full.yaml`; not changed after the overfitting audit | **Locked** (2026-11-17) | Audit (§6 Phase 2) found no lucky-peak / rule overfit; variants that scored ≤1 question better on dev are *not* adopted. |
 | D13 | Test split stays sealed until Phase 5 (no early test run of A-full) | **Locked** (2026-11-17) | User decision: strictest protocol; all frozen systems scored on test once, together, at the end. |
+| D14 | Dev split into dev_tune (100) / dev_holdout (50), stratified by category, seed 20261117 (`configs/dev_split.json`) | **Locked** (2026-11-17) | All Phase 3+ selection on dev_tune; dev_holdout scored only for frozen configs, with `--test-note`, logged in `HOLDOUT_RUNS.md`. |
+| D15 | Plan B frozen as `configs/B_full.yaml` = Plan A retrieval + qwen3:8b cited answers | **Locked** (2026-11-17) | User decision. LLM query analysis, HyDE, LLM rerank and LLM judge dropped: no significant gain on dev_tune (§6 Phase 3 results). |
 | D10 | LLM Act summaries for Phase C (≈15–20 GPU-hours for all 15k docs) | Open → decide after a 1k-doc trial | Cheap "card" version without LLM summaries is the default. |
 
 ---
@@ -354,6 +357,69 @@ across Acts/titles, not across phrasing. The only definitive check is the frozen
 
 **Ablation rows:** B1 (+query analysis), B2 (+HyDE), B3 (+LLM rerank), B4 (+LLM abstention), B5 (+answers), and the D8 LLM comparison (2 models max on dev).
 **Done when:** A+B > A on dev for situational / jurisdictional / unanswerable (CIs reported); answer metrics computed.
+
+#### Phase 3 results (2026-11-17; all selection on dev_tune, n=100; dev_holdout scored once for the frozen config)
+
+Setup as built: qwen3:8b (Q4_K_M, thinking off, T=0, seed 20261117, num_ctx 8192) via Ollama; stage-wise runner
+`scripts/run_b.py` (LLM stage → GPU retrieval → LLM stage, because the 8 GB GPU cannot hold both). Prompts written
+once from the task definition (no few-shot examples, item 6 not done; no prompt iteration). Configs `configs/B0–B7.yaml`.
+
+Retrieval, evidence recall at B=8000 on dev_tune (A-full = .500 / .700 / .786 / .900 / 1.000 / .852, false abst. .011):
+
+| Config | adds | xref | def | jur | num | prov | sit | false abst. | LLM s/q |
+|---|---|---|---|---|---|---|---|---|---|
+| B1 | LLM query analysis → act-restricted BM25/dense, keyword BM25, LLM jurisdiction | .500 | .700 | .714 | .900 | 1.000 | .852 | .033 | ~5 |
+| B2 | + HyDE dense list | .500 | .700 | .786 | .900 | 1.000 | .852 | .022 | ~10 |
+| B3 | + pointwise LLM rerank of top-20 (0.5·P(yes)+0.5·CE) | .571 | .700 | .857 | .900 | 1.000 | .889 | .022 | ~55 |
+| B4 | + LLM abstention judge | = B3 (judge never fired) | | | | | | .022 | ~58 |
+| B7 | A-full + LLM rerank only | .571 | .700 | .857 | .900 | 1.000 | .889 | .011 | ~45 |
+
+No retrieval difference vs A-full is significant (paired bootstrap); the LLM rerank's gains are +1 question each in
+xref/jur/sit at 8k plus +2 num at B=2000. Unanswerable abstention is 1.00 throughout (already saturated by Plan A).
+
+Answers (official kit metrics, mean over the 6 answerable categories, dev_tune):
+
+| Config | answer mode | fact cov. | cit. recall | cit. prec. | quote grounding |
+|---|---|---|---|---|---|
+| B0 | A-full + extractive (quote top provision, cite it) | .556 | .547 | .593 | 1.000 |
+| **B6** | **A-full + qwen3:8b cited answer (answer-v1)** | **.744** | **.765** | **.695** | 1.000 |
+| B7 | B6 + LLM rerank | .745 | .762 | .678 | 1.000 |
+| B5 | full stack (B4 + answers) | .735 | .744 | .704 | .991 → 1.000 after fix |
+
+Paired bootstrap over the 90 answerable questions: B6 − B0 fact +0.144 [+0.050, +0.239], citation recall
++0.194 [+0.117, +0.278] (both significant), precision +0.046 [−0.029, +0.126]; B7 − B6 and B5 − B6 are all
+≈ 0 (|Δ| ≤ 0.011, CIs span 0).
+
+**Frozen Plan B = `configs/B_full.yaml` (= B6, D15).** dev_holdout (n=50, scored once; re-scored once after the
+quote bug fix below, both logged in `HOLDOUT_RUNS.md`): retrieval identical to A-full (by construction);
+unanswerable abstention 1.00, false abstention .067 (3/45; same questions as A-full); answers fact .761,
+citation recall .786, precision .839, quote grounding 1.000 — consistent with dev_tune (.744 / .765 / .695), i.e.
+no sign that the configuration choice overfit dev_tune.
+
+Findings (honest reading):
+- **The "Done when" criterion is not met.** The LLM layer does not improve *retrieval* for situational /
+  jurisdictional / unanswerable with an 8B local model. Its one significant contribution is answer generation.
+- **Query analysis fails on legal knowledge, not formatting.** The gold Act is among the LLM-resolved documents for
+  only ~30% of situational and jurisdictional and 0% of definitional questions; the model gives wrong years
+  (handled: year-tolerant title match, `resolve_laws` v2) and cannot know obscure State Rules/Regulations. The extra
+  lists also dilute the cross-encoder pool (gold in final@100 drops .95 → .90).
+- **The LLM judge is uninformative:** P(answerable) ≥ 0.94 for every answerable question it saw, and Plan A's rules
+  had already caught all unanswerables — nothing left for it to do.
+- **The LLM rerank is not worth its cost:** ~45 s/question for +3 questions at 8k (not significant) and no effect on
+  answer metrics. Dropped (user decision, 2026-11-17), reported as a negative ablation.
+- **Caveat on quote grounding:** qwen3 mostly quotes with single quotes, which the kit does not score; only ~13–20%
+  of answers carry a scored (double-quoted, ≥12 chars) quote, so quote grounding = 1.000 covers a minority.
+- Not done (deferred, not needed for the decision): D8 second-model comparison (llama3.1:8b), thinking-on ablation.
+
+Phase 3 log (code changes made during Phase 3, all decided on dev_tune):
+1. `resolve_laws` v2: accept title matches whose year no copy has (LLM years unreliable).
+2. `ground_quotes` v2 (bug fix): the kit's quote regex skips quotes < 12 chars and so can pair the closing mark of
+   one short quote with the opening mark of the next (dev_tune IN-STAT-0413); and uncited answers were grounded
+   against all passages while the kit only searches gold + cited documents (IN-STAT-0464). Now only verified
+   quotes ≥ 12 chars keep double quotes, others become single quotes; grounding uses cited passages only; a final
+   pass with the kit's own `quotes()` is the safety net. Tests: `tests/test_ground_quotes.py`.
+3. `evaluate._log_test_run` bug: dev_holdout runs were written to `TEST_RUNS.md`. Fixed (they go to
+   `HOLDOUT_RUNS.md`); the two misplaced rows were moved and `TEST_RUNS.md` restored. The test split was never read.
 
 ### Phase 4 — Plan C: Act routing + cross-reference graph + jurisdiction mapping (Day 6; extended later)
 1. **Act index:** BM25 + dense over doc cards (Phase 1.7). Optional (D10): LLM 3-sentence "what this Act regulates" summaries; trial on ~1k docs (incl. dev gold docs + random) first; full run (~15–20 GPU-hours) only if the trial shows dev gains.

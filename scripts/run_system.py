@@ -2,7 +2,8 @@
 
     python scripts/run_system.py configs/A0.yaml --split dev [--compare runs/baselines/bm25-windows_dev.json]
 
-Test split: only with --test-note (forwarded to the evaluator, logged to TEST_RUNS.md).
+test / dev_holdout: only with --test-note (forwarded to the evaluator, logged to TEST_RUNS.md /
+HOLDOUT_RUNS.md). Phase 3+ development uses --split dev_tune.
 """
 
 from __future__ import annotations
@@ -24,12 +25,12 @@ from isr.pipeline import Pipeline
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("config", type=Path)
-    p.add_argument("--split", required=True, choices=["dev", "test"])
+    p.add_argument("--split", required=True, choices=["dev", "test", "dev_tune", "dev_holdout"])
     p.add_argument("--compare", type=Path)
     p.add_argument("--test-note")
     args = p.parse_args()
-    if args.split == "test" and not args.test_note:
-        p.error("test split requires --test-note (plan.md D6)")
+    if args.split in ("test", "dev_holdout") and not args.test_note:
+        p.error(f"{args.split} requires --test-note (plan.md D6 / D14)")
 
     config = yaml.safe_load(args.config.read_text(encoding="utf-8"))
     pipe = Pipeline(config)
