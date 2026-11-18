@@ -115,6 +115,9 @@ def main() -> int:
         ans_llm = llm if (llm is not None and am == llm.model and actx == llm.num_ctx) else LLM(am, num_ctx=actx)
     else:
         ans_llm = None
+    sel_llm = None
+    if lc.get("select"):
+        sel_llm = ans_llm or llm or LLM(lc.get("model", "qwen3:8b"))
     min_piece = cfg.get("pack", {}).get("min_piece", 200)
     run, answers = {}, {}
     for n, q in enumerate(qs, 1):
@@ -137,6 +140,24 @@ def main() -> int:
             hs = set(head)
             ranked = list(tr.pinned) + new_head + [u for u in ranked if u not in pinned and u not in hs]
             t["llm_rel"] = {str(u): round(rel[u], 4) for u in head}
+        sl = lc.get("select")
+        if sl and not tr.abstain_reason:      # post-test option 1: listwise selection over the top provisions
+            pinned = list(tr.pinned)
+            cands, seen = [], set()
+            for u in ranked:
+                p = int(store.parent[u]) if store.kind[u] == "subunit" else int(u)
+                if store.kind[p] != "provision" or p in seen or u in pinned:
+                    continue
+                seen.add(p)
+                snip = " ".join(store.text(p)[:sl.get("snippet", 220)].split())
+                cands.append((f"P{len(cands) + 1}", p, f"{store.title(store.doc[p])} | {store.label[p]} | {snip}"))
+                if len(cands) >= sl.get("candidates", 8):
+                    break
+            picks = S.select(sel_llm, q["question"], [(h, d) for h, _, d in cands], sl.get("max_pick", 2))
+            by_h = {h: p for h, p, _ in cands}
+            chosen = [by_h[h] for h in picks]
+            ranked = list(dict.fromkeys(pinned + chosen + list(ranked)))
+            t["selected"] = chosen
         t["final"] = ranked[:100]
         spans = {} if tr.abstain_reason else {b: pack(ranked, b, store, min_piece=min_piece) for b in (2000, 8000, 32000)}
         abstain = tr.abstain_reason
@@ -169,7 +190,7 @@ def main() -> int:
         traces[qid] = t
         if n % 25 == 0:
             print(f"  stage3 {n}/{len(qs)} ({time.time() - t0:.0f}s)", flush=True)
-    for m in {id(x): x for x in (llm, ans_llm) if x is not None}.values():
+    for m in {id(x): x for x in (llm, ans_llm, sel_llm) if x is not None}.values():
         m.unload()
         timing.setdefault("llm_stats", {})[m.model] = m.stats
     timing["stage3_s"] = round(time.time() - t0, 1)

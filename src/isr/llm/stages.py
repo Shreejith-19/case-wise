@@ -111,6 +111,30 @@ def relevance(llm: LLM, question: str, title: str, label: str, text: str) -> flo
     return p
 
 
+# --- post-test option 1: listwise selection over the top candidates (plan.md "Post-test exploration") --------
+SELECT_V = "select-v1"
+SELECT_PROMPT = """Question: {q}
+
+Candidate provisions:
+{cands}
+
+Which candidate provisions contain the answer to the question? Reply with JSON {{"best": [...]}} listing at most \
+2 candidate ids, most relevant first. If the question has two parts, choose the provision that answers each part."""
+
+
+def select(llm: LLM, question: str, cands: list[tuple[str, str]], max_pick: int = 2) -> list[str]:
+    """``cands``: (handle, one-line description). Returns up to ``max_pick`` valid handles, best first."""
+    ids = [h for h, _ in cands]
+    schema = {"type": "object", "properties": {"best": {"type": "array", "items": {"type": "string", "enum": ids}}},
+              "required": ["best"]}
+    text = "\n".join(f"{h} | {d}" for h, d in cands)
+    r = llm.chat([{"role": "system", "content": SYSTEM},
+                  {"role": "user", "content": SELECT_PROMPT.format(q=question, cands=text)}],
+                 version=SELECT_V, schema=schema, max_tokens=60)
+    out = r.parsed.get("best", []) if isinstance(r.parsed, dict) else []
+    return [h for h in dict.fromkeys(str(x) for x in out) if h in ids][:max_pick]
+
+
 # --- B4 abstention judge -------------------------------------------------------------------------------
 JUDGE_V = "judge-v1"
 JUDGE_PROMPT = """Question: {q}

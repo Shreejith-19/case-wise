@@ -608,6 +608,19 @@ Paired vs C-full: fact +.161 [+.089, +.239], citation recall +.178, citation pre
 most of the remaining answer gap is retrieval, not generation. The generator's own ceiling shows on
 cross_reference (.607 fact coverage even with both gold provisions in context).
 
+#### Post-test exploration (after Phase 5; user decision 2026-11-18: "option 1 only, labelled")
+Every benchmark question is in dev or test and test is spent, so anything here is **post-test** and is reported
+separately from the frozen results, which remain the headline.
+- **Option 1 = C-LS** (`configs/C_LS.yaml`): C-full + LLM *listwise selection* — qwen3:8b sees C-full's top-8
+  provisions as one-line snippets (title | label | first 220 chars, as in agent E) and returns ≤ 2 ids
+  (`select-v1`); picks move to the top under the pinned exact hits; abstention and answers unchanged. All settings
+  copied from E, fixed before any run; no iteration.
+- **Not done, on purpose:** better Act identification for situational questions and a foreign/case-law abstention
+  rule — both target failures first seen in the *test* error analysis; reported as limitations / future work.
+- **Gate (fixed before running):** C-LS gets one post-test run on test **only if** pooled dev (dev_tune + dev_holdout,
+  n = 135 answerable) evidence recall @8k vs C-full has a paired-bootstrap 95% CI excluding 0. Otherwise it is
+  reported as a dev-only negative result.
+
 ### Phase 7 — Write-up & reproducibility
 - Paper sections: task + benchmark summary, system, ablations (RQ1–RQ5), results with CIs, error analysis, efficiency, limitations (D5 validity, LLM-drafted questions, structure-aid disclosure, local-model ceiling, small dev set).
 - Every result states the six required fields: corpus version + `CHECKSUMS.txt` hash; split; budget; τ; tuned-on-test (no); judge model/protocol (n/a unless answers are judged by an LLM; the built-in answer metrics are lexical).
