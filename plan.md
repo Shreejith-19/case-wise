@@ -1,8 +1,9 @@
 # Project Plan: Structure-Aware, LLM-Assisted RAG for Indian Statutory Law (IndiaStatRAG)
 
-> Status: **Phases 0–6 complete (2026-11-18)** — final test run done once for every frozen system; all §8 minimum
-> criteria met (§6 Phase 5 results; `runs/final/REPORT.md`). Phase 6 (dev-only upper bounds: agent E, oracle-context
-> answers) done (§6 Phase 6 results). Next: Phase 7 write-up, pending approval. Earlier: Phases 0–4 complete — Plan C frozen as `configs/C_full.yaml` (cross-reference expansion only).
+> Status: **All phases complete (2026-11-18).** Final test run done once for every frozen system; all §8 minimum
+> criteria met (§6 Phase 5 results; `runs/final/REPORT.md`). Phase 6 (dev-only upper bounds) and a labelled post-test
+> exploration (C-LS) done. Phase 7: capstone report written as a Claude Doc ("Structure-Aware Local RAG for Indian
+> Statutory Law — Capstone Report"); README rewritten as the reproducibility guide. Earlier: Phases 0–4 complete — Plan C frozen as `configs/C_full.yaml` (cross-reference expansion only).
 > Earlier: **Phases 0–3 complete (2026-11-17)** — environment, pinned kit, eval wrapper, baselines
 > reproduced exactly (README.md); unit store built (§6 Phase 1 results); Plan A frozen as `configs/A_full.yaml`
 > (§6 Phase 2 results); Plan B frozen as `configs/B_full.yaml` (§6 Phase 3 results: the LLM helps answers, not
