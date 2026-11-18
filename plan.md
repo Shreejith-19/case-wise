@@ -511,6 +511,23 @@ had no failures to fix on dev_tune (not built). LLM Act summaries (D10) not run:
 5. Error analysis (dev for diagnosis; test only descriptively after final runs). Taxonomy: wrong Act; right Act wrong provision; right provision wrong copy/jurisdiction; partial coverage (<τ); budget wasted on duplicates; false abstention; missed abstention; hallucinated citation.
 6. Efficiency table: index build time, disk, RAM/VRAM peak, per-question latency per stage.
 
+#### Phase 5 protocol (fixed 2026-11-18, committed and tagged `phase5-frozen` BEFORE any final test run)
+- **Systems (each run once on test, 352 Q; `scripts/phase5.py run`; refuses unless HEAD = tag and tree clean):**
+  A1d dense-only (`configs/A1d.yaml`), A-full, B0 = A-full + extractive answer (answer baseline, no LLM),
+  B-full, C-full. Shipped BM25 baselines were run on test in Phase 0 (TEST_RUNS.md) and are reused.
+- **Reference baseline:** bm25-two-stage (better shipped BM25 on *dev*, macro R@8k .211 vs .199).
+- **Primary:** evidence recall @B=8000, τ=0.5, per category; abstention rate / false abstention. Secondary: all
+  budgets, precision, all-groups, MRR, doc recall, τ=0.8/1.0 (kit `stricter_tau`), answer metrics.
+- **Paired comparisons (paired bootstrap, 95%):** every system vs bm25-two-stage; A-full vs A1d; C-full vs A-full
+  (retrieval); B-full vs B0 and C-full vs B-full (answers).
+- **Success criteria:** §8 as written (minimum: full system > best BM25 in every answerable category @8k with
+  significant paired differences on situational, jurisdictional, cross_reference; abstention > 0 with false
+  abstention ≤ ~5%).
+- **No changes after seeing test numbers** except crash fixes (disclosed). Error analysis on test is descriptive.
+- **Frozen versions:** qwen3:8b digest 500a1f067a9f…; Qwen3-Embedding-0.6B snapshot 97b0c614be4d…;
+  bge-reranker-v2-m3 snapshot 953dc6f6f85a…; torch 2.13.0+cu130, sentence-transformers 5.7.0, transformers
+  4.57.6; Ollama 0.17.7; benchmark kit b45befa; corpus checksum 33b624048b53.
+
 ### Phase 6 — Optional upper bound (only if time remains)
 - **E (agentic, local):** 8B model with tools `search(query)`, `open_toc(doc)`, `read(doc,key)` on dev only, max N steps. Reported as an exploratory upper-bound attempt, not the main system.
 

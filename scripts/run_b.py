@@ -19,7 +19,7 @@ from pathlib import Path
 
 import yaml
 
-from isr import RUNS_DIR
+from isr import RUNS_DIR, pause
 from isr.eval import evaluate as ev
 from isr.eval.kit import HEADLINE_BUDGET, questions_for
 from isr.eval.predictions import write_predictions
@@ -80,6 +80,7 @@ def main() -> int:
         t0 = time.time()
         llm = LLM(lc.get("model", "qwen3:8b"))
         for n, q in enumerate(qs, 1):
+            pause.check(f"stage 1, question {n}/{len(qs)} (LLM replies so far are cached)")
             sig: dict = {}
             if need_analysis:
                 a = S.analyse(llm, q["question"])
@@ -117,6 +118,7 @@ def main() -> int:
     min_piece = cfg.get("pack", {}).get("min_piece", 200)
     run, answers = {}, {}
     for n, q in enumerate(qs, 1):
+        pause.check(f"stage 3, question {n}/{len(qs)} (LLM replies so far are cached)")
         qid = q["question_id"]
         ranked, tr = ranked_all[qid]
         t = {"abstain_reason": tr.abstain_reason, "rerank_top": tr.rerank_top,
@@ -185,4 +187,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except pause.Paused as e:
+        print(e)
+        raise SystemExit(pause.EXIT_PAUSED)
