@@ -9,3 +9,4 @@
 | 2026-11-18T15:14 | B0-Afull-extractive | `C:\Users\91910\Documents\Capstone\Sem7\Claude\runs\B0-Afull-extractive\pred_test.json` | 33b624048b53 | Phase 5 final test run, frozen commit 7ad684c (phase5-frozen): B0 |
 | 2026-11-18T15:44 | B-full | `C:\Users\91910\Documents\Capstone\Sem7\Claude\runs\B-full\pred_test.json` | 33b624048b53 | Phase 5 final test run, frozen commit 7ad684c (phase5-frozen): B_full |
 | 2026-11-18T15:50 | C-full | `C:\Users\91910\Documents\Capstone\Sem7\Claude\runs\C-full\pred_test.json` | 33b624048b53 | Phase 5 final test run, frozen commit 7ad684c (phase5-frozen): C_full |
+| 2026-11-18T18:01 | C-LS | `C:\Users\91910\Documents\Capstone\Sem7\Claude\runs\C-LS\pred_test.json` | 33b624048b53 | POST-TEST exploration (after frozen Phase 5): option 1 C-LS, single run; dev gate passed (pooled R@8k +0.048 [+0.004,+0.093]) |

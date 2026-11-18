@@ -620,6 +620,17 @@ separately from the frozen results, which remain the headline.
 - **Gate (fixed before running):** C-LS gets one post-test run on test **only if** pooled dev (dev_tune + dev_holdout,
   n = 135 answerable) evidence recall @8k vs C-full has a paired-bootstrap 95% CI excluding 0. Otherwise it is
   reported as a dev-only negative result.
+- **Dev gate: passed (barely).** Pooled R@8k +0.048 [+0.004, +0.093] (dev_tune +0.039, dev_holdout +0.067); R@2k
+  +0.093 [+0.030, +0.156]; MRR@8k +0.081; answers unchanged (no citation loss, unlike agent E); definitional
+  loses at B=2000 on both dev subsets.
+- **Post-test run on test (once, logged; `runs/final/POST_TEST.md`, `scripts/post_test_report.py`):**
+  R@8k .740 vs .716, +0.024 [−0.005, +0.054] (**n.s.**; macro .772 vs .757); R@2k **+0.052** [+0.009, +0.093];
+  MRR **+0.057 / +0.053 / +0.059** at 8k / 2k / 32k (all significant); situational @8k .559 vs .495, definitional
+  .735 vs .765; xref all-groups .529 vs .490; abstention unchanged. Answers: fact coverage −0.028 [−0.058, +0.002]
+  (borderline), citation precision **+0.037** [+0.002, +0.071]. Cost: +1 LLM call (~3 s) per question.
+- **Reading:** listwise LLM selection reliably *ranks* better (MRR, small budgets) but adds little at the headline
+  8k budget, where C-full's top-8 already fits most of what it would promote. Post-test evidence only; the frozen
+  C-full remains the reported system.
 
 ### Phase 7 — Write-up & reproducibility
 - Paper sections: task + benchmark summary, system, ablations (RQ1–RQ5), results with CIs, error analysis, efficiency, limitations (D5 validity, LLM-drafted questions, structure-aid disclosure, local-model ceiling, small dev set).
