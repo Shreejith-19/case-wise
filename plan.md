@@ -1,8 +1,8 @@
 # Project Plan: Structure-Aware, LLM-Assisted RAG for Indian Statutory Law (IndiaStatRAG)
 
-> Status: **Phases 0–5 complete (2026-11-18)** — final test run done once for every frozen system; all §8 minimum
-> criteria met (§6 Phase 5 results; `runs/final/REPORT.md`). Next: Phase 6 (optional) / Phase 7 write-up, pending
-> approval. Earlier: Phases 0–4 complete — Plan C frozen as `configs/C_full.yaml` (cross-reference expansion only).
+> Status: **Phases 0–6 complete (2026-11-18)** — final test run done once for every frozen system; all §8 minimum
+> criteria met (§6 Phase 5 results; `runs/final/REPORT.md`). Phase 6 (dev-only upper bounds: agent E, oracle-context
+> answers) done (§6 Phase 6 results). Next: Phase 7 write-up, pending approval. Earlier: Phases 0–4 complete — Plan C frozen as `configs/C_full.yaml` (cross-reference expansion only).
 > Earlier: **Phases 0–3 complete (2026-11-17)** — environment, pinned kit, eval wrapper, baselines
 > reproduced exactly (README.md); unit store built (§6 Phase 1 results); Plan A frozen as `configs/A_full.yaml`
 > (§6 Phase 2 results); Plan B frozen as `configs/B_full.yaml` (§6 Phase 3 results: the LLM helps answers, not
@@ -568,6 +568,45 @@ Each system run once on test at commit 7ad684c (`phase5-frozen`), logged in TEST
 
 ### Phase 6 — Optional upper bound (only if time remains)
 - **E (agentic, local):** 8B model with tools `search(query)`, `open_toc(doc)`, `read(doc,key)` on dev only, max N steps. Reported as an exploratory upper-bound attempt, not the main system.
+
+#### Phase 6 results (2026-11-18; DEV ONLY — run after the test split was spent, so never scored on test)
+**E-agent** (`src/isr/agent.py`, `scripts/run_e.py`, `configs/E.yaml`): qwen3:8b, one schema-constrained JSON
+action per step (`search(query, act?)` / `toc(id)` / `read(id)` / `answer`), ≤ 6 steps, prompt `agent-v1` written
+once and never revised. Starts from the frozen C-full top results and keeps C-full's rule/threshold abstention;
+its own searches are BM25 + dense **on the CPU** (8 GB GPU cannot hold LLM + retrieval models; no cross-encoder
+in the loop). `read` also lists the provisions the text cites (Phase 4 graph). Final ranking = cited → read →
+C-full ranking. Cost: mean 2.5 steps, ~10 s/question.
+
+| E − C-full | dev_tune (n=90) | dev_holdout (n=45, scored once, logged) | pooled dev (n=135) |
+|---|---|---|---|
+| evidence recall @8k | +.056 [+.006, +.111] | +.044 [.000, +.100] (p=.10) | **+.052 [+.019, +.093]** |
+| evidence recall @2k | +.150 [+.061, +.239] | +.011 (n.s.) | +.104 [+.037, +.170] |
+| MRR @8k | +.109 [+.038, +.181] | −.029 (n.s.) | — |
+| answers: fact coverage | +.006 (n.s.) | −.007 (n.s.) | — |
+| answers: citation recall | **−.167** | **−.256** | — |
+| answers: citation precision | −.053 (n.s.) | **−.201** | — |
+
+- **Where the retrieval gain comes from:** 92 of the agent's 103 reads were C-full's top-8 provisions; it chose a
+  gold provision ranked 2–8 by C-full 18 times and moved it to the top. Its own searches / ToC browsing found new
+  gold only twice. I.e. the agent works as a *listwise* reranker over 8 snippets — where Phase 3's *pointwise*
+  LLM rerank (B3, yes/no per passage) gave nothing significant. The dev_tune effect is inflated (the @2k and MRR
+  gains do not replicate on dev_holdout); the @8k gain holds in direction on both subsets.
+- **Answers get worse:** it cites only what it read (usually one provision), so citation recall/precision drop.
+- **Not adopted, not testable:** E is reported as an exploratory upper bound, as planned. A deterministic
+  "LLM listwise selection over the top-8" stage (no agent loop) is the hypothesis it suggests — future work that
+  would need a fresh test set to evaluate honestly.
+
+**E-oracle-answers** (`scripts/oracle_answers.py`; dev_tune): B-full's answer stage given the *gold* provisions.
+
+| dev_tune answers (mean over categories) | C-full | E-agent | gold context |
+|---|---|---|---|
+| fact coverage | .741 | .722 | **.903** |
+| citation recall / precision (paired, per question) | .789 / .685 | .622 / .631 | **.967 / .989** |
+
+Paired vs C-full: fact +.161 [+.089, +.239], citation recall +.178, citation precision +.304 (all significant).
+**Reading:** with perfect evidence the same 8B generator covers ~90% of required facts and almost never mis-cites;
+most of the remaining answer gap is retrieval, not generation. The generator's own ceiling shows on
+cross_reference (.607 fact coverage even with both gold provisions in context).
 
 ### Phase 7 — Write-up & reproducibility
 - Paper sections: task + benchmark summary, system, ablations (RQ1–RQ5), results with CIs, error analysis, efficiency, limitations (D5 validity, LLM-drafted questions, structure-aid disclosure, local-model ceiling, small dev set).

@@ -1,0 +1,20 @@
+# E - Phase 6 exploratory agentic upper bound (dev only): C-full retrieval as the starting point and fallback,
+# then a qwen3:8b agent with search/toc/read/answer tools (isr.agent, agent-v1), max 6 steps.
+name: E-agent
+retrieve:
+  bm25: {k: 300, weight: 1.0}
+  dense: {model: qwen3-0.6b, k: 300, weight: 1.0}
+metadata:
+  act_bm25: {k: 100, weight: 1.0}
+  exact_ref: {weight: 2.0}
+  jur_bm25: {k: 100, weight: 0.5}
+abstain:
+  missing_provision: true
+  unresolved_law: true
+  rerank_threshold: 0.041   # tuned on dev traces: max(abst - 2*false), false <= 5%  (dev: 1.000 / 0.030)
+rerank: {model: bge-reranker-v2-m3, depth: 100, pin_exact: true}
+fusion: {k: 60}
+pack: {min_piece: 200}
+planc:
+  xref: {mode: post, m: 3, max_per: 2, incoming: true, multipart_only: true, part_scores: true, min_ce: 0.041}
+agent: {model: qwen3:8b, num_ctx: 12288}
