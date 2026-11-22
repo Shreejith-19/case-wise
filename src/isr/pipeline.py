@@ -83,7 +83,9 @@ def rule_abstain_reason(p: ParsedQuery, numbers: list[str], exact: list[int], ab
 
 
 class Pipeline:
-    def __init__(self, config: dict, store: UnitStore | None = None) -> None:
+    def __init__(self, config: dict, store: UnitStore | None = None, dense=None) -> None:
+        """``dense``: an already-built dense index to use instead of the GPU one (e.g. ``CpuDenseIndex`` for the
+        interactive chatbot, which keeps the GPU free for the LLM). Default (None) = the evaluated GPU index."""
         self.config = config
         self.name = config["name"]
         self.store = store or UnitStore()
@@ -91,8 +93,8 @@ class Pipeline:
         if "bm25" in config.get("retrieve", {}) or config.get("metadata"):
             from isr.index.bm25 import BM25
             self.bm25 = BM25()
-        self.dense = None
-        if "dense" in config.get("retrieve", {}):
+        self.dense = dense
+        if dense is None and "dense" in config.get("retrieve", {}):
             from isr.index.dense import DenseIndex
             self.dense = DenseIndex(config["retrieve"]["dense"]["model"])
         self.reranker = None

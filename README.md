@@ -75,6 +75,21 @@ python scripts/phase5_analysis.py                   # -> runs/final/REPORT.md
 python scripts/post_test_report.py                  # -> runs/final/POST_TEST.md (post-test C-LS)
 ```
 
+## Chatbot (interactive demo)
+
+Ask the final system (`configs/C_full.yaml`) questions directly. Needs the indexes above and Ollama running.
+
+```bash
+ollama serve                                   # or open the Ollama app
+.venv/Scripts/python scripts/chat.py           # interactive; ~45 s to load, then ~8-20 s per answer
+.venv/Scripts/python scripts/chat.py "Under the Right to Information Act, 2005, within how many days must the Public Information Officer reply to a request for information?"
+```
+
+In the chat: `:sources` shows the provisions given to the LLM, `:why` shows retrieval details (abstention reason,
+top hits, cross-encoder scores), `:quit` exits. The dense search runs on the CPU here (`isr.index.dense_cpu`) so the
+cross-encoder and the LLM fit on the 8 GB GPU together; retrieval logic, prompt and post-processing are those of the
+evaluated system. Answers are cached, so a repeated question returns instantly and identically.
+
 ## Development workflow (dev only)
 
 ```bash
