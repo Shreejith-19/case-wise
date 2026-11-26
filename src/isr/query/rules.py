@@ -13,8 +13,10 @@ from functools import lru_cache
 
 import pandas as pd
 
-from isr.corpus.build import DOCS_PATH
+from isr import DATA_DIR
 from isr.corpus.units import normalise
+
+DOCS_PATH = DATA_DIR / "docs.parquet"
 
 # canonical jurisdiction (as in docs.jurisdiction) -> extra aliases (lowercase, normalised)
 JURISDICTIONS = {
