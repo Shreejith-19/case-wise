@@ -40,6 +40,12 @@ export const JURISDICTIONS = [
 
 export const DOC_TYPES = ['All', 'Central Act', 'State Act', 'Rule', 'Regulation'];
 
+export const BUDGETS = [
+  { value: 2000, label: '2k chars' },
+  { value: 8000, label: '8k chars' },
+  { value: 32000, label: '32k chars' },
+];
+
 export const ABSTAIN_MESSAGES = {
   missing_provision: {
     title: 'Section or Rule Not Found',
@@ -53,6 +59,11 @@ export const ABSTAIN_MESSAGES = {
   low_rerank_score: {
     title: 'No Relevant Provision Found',
     detail: 'No statutory provision matched your query with sufficient confidence to provide a reliable answer.',
+  },
+  filter_empty: {
+    title: 'No Statutes Match Selected Filters',
+    detail:
+      'No instruments in the corpus match the selected jurisdiction and instrument type combination. Try broadening your filters.',
   },
   llm: {
     title: 'Insufficient Statutory Basis',

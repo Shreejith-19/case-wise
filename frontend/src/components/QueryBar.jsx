@@ -1,5 +1,5 @@
-import { Search, ArrowUp, Loader2, MapPin, FileText } from 'lucide-react';
-import { JURISDICTIONS, DOC_TYPES } from '../data/constants';
+import { Search, ArrowUp, Loader2, MapPin, FileText, Gauge } from 'lucide-react';
+import { JURISDICTIONS, DOC_TYPES, BUDGETS } from '../data/constants';
 
 export default function QueryBar({
   question,
@@ -8,9 +8,12 @@ export default function QueryBar({
   setJurisdiction,
   docType,
   setDocType,
+  budget,
+  setBudget,
   loading,
   onSubmit,
   compact = false,
+  isFollowUp = false,
 }) {
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -36,7 +39,11 @@ export default function QueryBar({
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Ask a legal question or look up an Act, section, or statutory rule..."
+          placeholder={
+            isFollowUp
+              ? 'Ask a follow-up question in this research thread, or ask about a new Act...'
+              : 'Ask a legal question or look up an Act, section, or statutory rule...'
+          }
           className="w-full resize-none bg-transparent text-[14px] leading-relaxed text-slate-900 placeholder:text-slate-400 focus:outline-none"
         />
       </div>
@@ -74,6 +81,22 @@ export default function QueryBar({
               ))}
             </select>
           </label>
+
+          <label className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-100/80">
+            <Gauge className="h-3 w-3 text-slate-500" />
+            <select
+              aria-label="Context Budget"
+              value={budget}
+              onChange={(e) => setBudget(Number(e.target.value))}
+              className="bg-transparent font-medium text-slate-700 focus:outline-none"
+            >
+              {BUDGETS.map((b) => (
+                <option key={b.value} value={b.value}>
+                  {b.label}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
 
         <button
@@ -88,7 +111,7 @@ export default function QueryBar({
             </>
           ) : (
             <>
-              <span>Search</span>
+              <span>{isFollowUp ? 'Ask' : 'Search'}</span>
               <ArrowUp className="h-3.5 w-3.5" />
             </>
           )}
