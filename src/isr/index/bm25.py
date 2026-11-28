@@ -64,6 +64,8 @@ def _tokenize_shard(path: str):
 def build(k1: float = 1.2, b: float = 0.75, workers: int = 6, out: Path = BM25_DIR) -> dict:
     t0 = time.time()
     shards = sorted(str(p) for p in UNITS_DIR.glob("part-*.parquet"))
+    if not shards:
+        raise FileNotFoundError(f"No unit shards in {UNITS_DIR}; run `python -m isr.corpus.build` first.")
     vocab: dict[str, int] = {}
     unit_ids, lens, blocks = [], [], []
     with mp.Pool(workers, initializer=_init_worker) as pool:

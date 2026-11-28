@@ -22,7 +22,7 @@ import pandas as pd
 import pyarrow.parquet as pq
 import torch
 
-from isr import INDEX_DIR
+from isr import INDEX_DIR, pause
 from isr.corpus.build import DOCS_PATH, UNITS_DIR
 
 TASK = "Given a question about Indian law, retrieve the statutory provision that answers it"
@@ -47,10 +47,10 @@ def load_model(model: str):
     return m
 
 
-def _encode_sorted(m, texts: list[str], batch: int) -> np.ndarray:
+def _encode_sorted(m, texts: list[str], batch: int, progress: bool = False) -> np.ndarray:
     order = np.argsort([len(t) for t in texts])[::-1]
     emb = m.encode([texts[i] for i in order], batch_size=batch, normalize_embeddings=True,
-                   convert_to_numpy=True, show_progress_bar=False).astype(np.float16)
+                   convert_to_numpy=True, show_progress_bar=progress).astype(np.float16)
     out = np.empty_like(emb)
     out[order] = emb
     return out
@@ -60,7 +60,7 @@ def build(model: str, batch: int = 32) -> dict:
     out = index_dir(model)
     out.mkdir(parents=True, exist_ok=True)
     titles = dict(pd.read_parquet(DOCS_PATH, columns=["document_id", "title"]).itertuples(index=False))
-    m = load_model(model)
+    m = None
     prefix = MODELS[model]["d"]
     shards = sorted(UNITS_DIR.glob("part-*.parquet"))
     t0, done_chars = time.time(), 0
@@ -68,18 +68,23 @@ def build(model: str, batch: int = 32) -> dict:
         target = out / f"{shard.stem}.npy"
         if target.exists():
             continue
+        pause.check(f"dense shard {n - 1}/{len(shards)}")
+        if m is None:
+            m = load_model(model)
         t = pq.read_table(shard, columns=["unit_id", "document_id", "label", "text", "is_rep"]).to_pandas()
         t = t[t["is_rep"]]
         texts = [f"{prefix}{titles[d]}\n{l}\n{x}" for d, l, x in zip(t["document_id"], t["label"], t["text"])]
-        emb = _encode_sorted(m, texts, batch)
-        np.save(out / f"{shard.stem}.ids.npy", t["unit_id"].to_numpy(np.int32))
-        np.save(target, emb)                       # written last: its presence marks the shard done
+        print(f"  [{n}/{len(shards)}] encoding {len(texts):,} units ({shard.name}, batch={batch}) ...", flush=True)
+        emb = _encode_sorted(m, texts, batch, progress=True)
+        pause.save_npy(out / f"{shard.stem}.ids.npy", t["unit_id"].to_numpy(np.int32))
+        pause.save_npy(target, emb)                # written last: its presence marks the shard done
         done_chars += sum(len(x) for x in texts)
         el = time.time() - t0
         print(f"  {n}/{len(shards)} shards  {el / 60:.1f} min  {done_chars / max(el, 1e-9) / 1e3:.0f}k chars/s",
               flush=True)
-    del m
-    torch.cuda.empty_cache()
+    if m is not None:
+        del m
+        torch.cuda.empty_cache()
     parts = sorted(p for p in out.glob("part-*.npy") if not p.name.endswith(".ids.npy"))
     ids = np.concatenate([np.load(p.with_name(p.stem + ".ids.npy")) for p in parts])
     dim = np.load(parts[0], mmap_mode="r").shape[1]
@@ -167,7 +172,11 @@ def main() -> int:
     p.add_argument("--model", required=True, choices=list(MODELS))
     p.add_argument("--batch", type=int, default=32)
     args = p.parse_args()
-    print(json.dumps(build(args.model, args.batch), indent=1))
+    try:
+        print(json.dumps(build(args.model, args.batch), indent=1))
+    except pause.Paused as e:
+        print(e)
+        return pause.EXIT_PAUSED
     return 0
 
 
