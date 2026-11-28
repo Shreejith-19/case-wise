@@ -157,6 +157,55 @@ def judge(llm: LLM, question: str, passages: str) -> float:
     return p
 
 
+# --- interactive follow-up contextualization (UI chat sessions only) -------------------------------------
+CONTEXTUALIZE_V = "contextualize-v1"
+_FOLLOWUP_RE = re.compile(
+    r"\b(it|its|they|them|their|this|that|those|these|same|such|above|earlier|previous|"
+    r"exception|exceptions|penalty|punishment|appeal|time\s+limit|what\s+about|how\s+about|and\s+what)\b",
+    re.I,
+)
+CONTEXTUALIZE_PROMPT = """Rewrite the follow-up question into a self-contained legal search question \
+about Indian statutory law using the conversation history below.
+Keep any Act names, section numbers, and jurisdictions implied by the prior turn when the follow-up refers to them.
+If the follow-up introduces a completely new topic unrelated to prior turns, return it as-is.
+Output ONLY the rewritten standalone question (one sentence, no commentary).
+
+Conversation history:
+{history}
+
+Follow-up question: {q}"""
+
+
+def needs_contextualize(question: str, prior_turns: Sequence[dict]) -> bool:
+    """True when a chat follow-up likely relies on an earlier turn (no named Act + pronoun/short cue)."""
+    if not prior_turns:
+        return False
+    try:
+        if parse(question).acts:
+            return False
+    except FileNotFoundError:
+        pass
+    words = question.split()
+    return len(words) <= 10 or bool(_FOLLOWUP_RE.search(question))
+
+
+def contextualize(llm: LLM, question: str, prior_turns: Sequence[dict]) -> str:
+    """Resolve follow-up references against recent (question, answer) turns into a standalone query."""
+    if not prior_turns:
+        return question
+    hist = "\n".join(
+        f"User: {t['question']}\nAssistant: {t.get('answer') or '(no answer)'}"
+        for t in list(prior_turns)[-3:]
+    )
+    r = llm.chat(
+        [{"role": "system", "content": SYSTEM},
+         {"role": "user", "content": CONTEXTUALIZE_PROMPT.format(history=hist, q=question)}],
+        version=CONTEXTUALIZE_V, max_tokens=120,
+    )
+    rewritten = " ".join(r.content.strip().split())
+    return rewritten or question
+
+
 # --- B5 cited answer ----------------------------------------------------------------------------------
 ANSWER_V = "answer-v1"
 ANSWER_SCHEMA = {

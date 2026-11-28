@@ -9,13 +9,15 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
-from typing import Sequence
+from typing import TYPE_CHECKING, Sequence
 
 import numpy as np
 import torch
 
 from isr import DATA_DIR
-from isr.store import UnitStore
+
+if TYPE_CHECKING:
+    from isr.store import UnitStore
 
 RERANKERS = {
     "bge-reranker-v2-m3": "BAAI/bge-reranker-v2-m3",
@@ -28,22 +30,40 @@ def _qhash(question: str) -> str:
     return hashlib.sha1(question.encode("utf-8")).hexdigest()[:16]
 
 
+def resolve_device(device: str | None = None) -> str:
+    """Resolve reranker device. 'auto' picks CPU when GPU VRAM < 5 GiB so Ollama fits alongside."""
+    if device and device != "auto":
+        return device
+    if not torch.cuda.is_available():
+        return "cpu"
+    if device == "auto":
+        try:
+            vram = torch.cuda.get_device_properties(0).total_memory
+            if vram < 5 * (1024 ** 3):
+                return "cpu"
+        except Exception:
+            pass
+    return "cuda"
+
+
 class Reranker:
-    def __init__(self, name: str, store: UnitStore, batch: int = 32) -> None:
+    def __init__(self, name: str, store: UnitStore, batch: int = 32, device: str | None = None) -> None:
         self.name = name
         self.store = store
         self.batch = batch
+        self.device = resolve_device(device)
         self._model = None
         path = DATA_DIR / "cache" / f"rerank_{name}.sqlite"
         path.parent.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(path)
+        self.db = sqlite3.connect(path, check_same_thread=False)
         self.db.execute("CREATE TABLE IF NOT EXISTS s (q TEXT, uid INTEGER, score REAL, PRIMARY KEY (q, uid))")
 
     def _load(self):
         if self._model is None:
             from sentence_transformers import CrossEncoder
-            self._model = CrossEncoder(RERANKERS[self.name], device="cuda", max_length=MAX_LEN,
-                                       model_kwargs={"torch_dtype": torch.float16})
+            kwargs = {"torch_dtype": torch.float16} if self.device == "cuda" else {}
+            self._model = CrossEncoder(RERANKERS[self.name], device=self.device, max_length=MAX_LEN,
+                                       model_kwargs=kwargs)
         return self._model
 
     def passage(self, uid: int) -> str:

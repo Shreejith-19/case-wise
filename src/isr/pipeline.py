@@ -83,7 +83,8 @@ def rule_abstain_reason(p: ParsedQuery, numbers: list[str], exact: list[int], ab
 
 
 class Pipeline:
-    def __init__(self, config: dict, store: UnitStore | None = None, dense=None) -> None:
+    def __init__(self, config: dict, store: UnitStore | None = None, dense=None,
+                 rerank_device: str | None = None) -> None:
         """``dense``: an already-built dense index to use instead of the GPU one (e.g. ``CpuDenseIndex`` for the
         interactive chatbot, which keeps the GPU free for the LLM). Default (None) = the evaluated GPU index."""
         self.config = config
@@ -100,7 +101,8 @@ class Pipeline:
         self.reranker = None
         if config.get("rerank"):
             from isr.retrieve.rerank import Reranker
-            self.reranker = Reranker(config["rerank"]["model"], self.store)
+            dev = rerank_device if rerank_device is not None else config["rerank"].get("device")
+            self.reranker = Reranker(config["rerank"]["model"], self.store, device=dev)
         pc = config.get("planc") or {}
         self.acts = None
         if pc.get("route"):
@@ -137,18 +139,28 @@ class Pipeline:
 
     # --- stages -----------------------------------------------------------------------
 
-    def rank(self, question: str, signals: dict | None = None) -> tuple[list[int], Trace]:
-        """``signals``: Plan B stage-1 LLM outputs (see isr.llm.run): act_docs, keywords, hyde, jurisdiction."""
+    def rank(self, question: str, signals: dict | None = None,
+             allowed_docs: Sequence[str] | None = None) -> tuple[list[int], Trace]:
+        """``signals``: Plan B stage-1 LLM outputs (see isr.llm.run): act_docs, keywords, hyde, jurisdiction.
+        ``allowed_docs``: optional UI metadata filter restricting retrieval to the given document ids."""
         cfg = self.config
         tr = Trace()
+        allowed_set = set(allowed_docs) if allowed_docs is not None else None
+        if allowed_set is not None and not allowed_set:
+            tr.abstain_reason = "filter_empty"
+            return [], tr
         lists: dict[str, list[int]] = {}
         weights: dict[str, float] = {}
         r = cfg.get("retrieve", {})
         if "bm25" in r:
-            lists["bm25"] = self._bm25(question, r["bm25"].get("k", 300))
+            lists["bm25"] = self._bm25(question, r["bm25"].get("k", 300), docs=allowed_docs)
             weights["bm25"] = r["bm25"].get("weight", 1.0)
         if self.dense is not None:
-            ids, _ = self.dense.search([question], k=r["dense"].get("k", 300))[0]
+            if allowed_set is not None:
+                ids, _ = self.dense.search_within(
+                    question, self.store.reps_for_docs(allowed_docs), k=r["dense"].get("k", 300))
+            else:
+                ids, _ = self.dense.search([question], k=r["dense"].get("k", 300))[0]
             lists["dense"] = [int(i) for i in ids]
             weights["dense"] = r["dense"].get("weight", 1.0)
 
@@ -156,17 +168,20 @@ class Pipeline:
         ab = cfg.get("abstain") or {}
         if md or ab:
             p = tr.parsed = parse(question)
-            act_docs = p.act_document_ids
+            act_docs = [d for d in p.act_document_ids if allowed_set is None or d in allowed_set]
             if "act_bm25" in md and act_docs:
                 lists["act_bm25"] = self._bm25(question, md["act_bm25"].get("k", 100), act_docs)
                 weights["act_bm25"] = md["act_bm25"].get("weight", 1.0)
             numbers, exact = named_provisions(p, self.store)
+            if allowed_set is not None and exact:
+                exact = [u for u in exact if self.store.doc[u] in allowed_set]
             if "exact_ref" in md and exact:
                 reps = [int(self.store.rep_of_class[self.store.class_id[u]]) for u in exact]
                 lists["exact_ref"] = list(dict.fromkeys(reps))
                 weights["exact_ref"] = md["exact_ref"].get("weight", 2.0)
             if "jur_bm25" in md and p.jurisdictions:
-                jdocs = [d for j in p.jurisdictions for d in self.jur_docs.get(j, [])]
+                jdocs = [d for j in p.jurisdictions for d in self.jur_docs.get(j, [])
+                         if allowed_set is None or d in allowed_set]
                 if jdocs:
                     lists["jur_bm25"] = self._bm25(question, md["jur_bm25"].get("k", 100), jdocs)
                     weights["jur_bm25"] = md["jur_bm25"].get("weight", 0.5)
@@ -177,20 +192,23 @@ class Pipeline:
         if self.acts is not None:
             ro = pc["route"]
             docs = self.acts.route_dense(question, k=ro.get("k_docs", 5))
+            if allowed_set is not None:
+                docs = [d for d in docs if d in allowed_set]
             tr.routed = docs
-            lists["route_bm25"] = self._bm25(question, ro.get("k", 100), docs)
-            weights["route_bm25"] = ro.get("weight", 1.0)
-            if self.dense is not None and ro.get("dense", True):
-                ids, _ = self.dense.search_within(question, self.store.reps_for_docs(docs), k=ro.get("k", 100))
-                lists["route_dense"] = [int(i) for i in ids]
-                weights["route_dense"] = ro.get("weight", 1.0)
+            if docs:
+                lists["route_bm25"] = self._bm25(question, ro.get("k", 100), docs)
+                weights["route_bm25"] = ro.get("weight", 1.0)
+                if self.dense is not None and ro.get("dense", True):
+                    ids, _ = self.dense.search_within(question, self.store.reps_for_docs(docs), k=ro.get("k", 100))
+                    lists["route_dense"] = [int(i) for i in ids]
+                    weights["route_dense"] = ro.get("weight", 1.0)
         tr.lists = lists
         if not lists:
             raise ValueError("no retriever configured")
         fused = rrf(lists, weights, k=cfg.get("fusion", {}).get("k", 60)) if len(lists) > 1 else lists[next(iter(lists))]
         xo = pc.get("xref") or {}
         if self.xref is not None and xo.get("mode") == "pre":
-            fused = self._expand(fused, xo, scores=None)
+            fused = self._expand(fused, xo, scores=None, allowed_set=allowed_set)
         if self.reranker is not None:
             depth = cfg["rerank"].get("depth", 100)
             # exact named-provision hits stay on top: the reranker only orders the rest
@@ -208,7 +226,8 @@ class Pipeline:
         if self.xref is not None and xo.get("mode") == "post" and not tr.abstain_reason:
             ps = question_parts(question)
             if not xo.get("multipart_only") or ps:
-                fused = self._expand(fused, xo, scores=tr.ce, parts=ps if xo.get("part_scores") else None)
+                fused = self._expand(fused, xo, scores=tr.ce, parts=ps if xo.get("part_scores") else None,
+                                     allowed_set=allowed_set)
         tr.final = fused[:100]
         return fused, tr
 
@@ -222,7 +241,7 @@ class Pipeline:
         return int(s.rep_of_class[s.class_id[u]])
 
     def _expand(self, ranked: list[int], xo: dict, scores: dict[int, float] | None,
-                parts: list[str] | None = None) -> list[int]:
+                parts: list[str] | None = None, allowed_set: set[str] | None = None) -> list[int]:
         """Cross-reference expansion (Plan C, plan.md Phase 4.4): directly after each of the top-``m`` units,
         insert up to ``max_per`` provisions it cites (and, with ``incoming``, provisions citing it) that are not
         already ranked above. Neighbours are ordered by cross-encoder score when known, else graph order.
@@ -244,7 +263,9 @@ class Pipeline:
             nb = list(self.xref.out.get(p, []))
             if xo.get("incoming"):
                 nb += self.xref.inc.get(p, [])
-            nb = [v for v in dict.fromkeys(nb) if v not in placed and v not in seen_prov]
+            nb = [v for v in dict.fromkeys(nb)
+                  if v not in placed and v not in seen_prov
+                  and (allowed_set is None or self.store.doc[v] in allowed_set)]
             if parts and nb and self.reranker is not None:
                 best = np.max(np.stack([self.reranker.scores(x, nb) for x in parts]), axis=0)
                 sc = dict(zip(nb, best.tolist()))
